@@ -344,6 +344,7 @@ add_another_node() {
 
     echo ""
     gum style --foreground 252 "You already have Transcodarr working and want to add another Mac."
+    gum style --foreground 252 "This will use the EXISTING SSH key from your first setup."
     echo ""
 
     local where_am_i
@@ -356,15 +357,7 @@ add_another_node() {
 
     case "$where_am_i" in
         "🖥️  On the NEW Mac (that I want to add)")
-            echo ""
-            gum style --foreground 252 "Great! I'll set up this Mac as a transcode node."
-            gum style --foreground 252 "After this, you'll need to register it on your Jellyfin server."
-            echo ""
-            if gum confirm "Continue?"; then
-                setup_apple_silicon
-            else
-                main_menu
-            fi
+            setup_additional_mac
             ;;
         "🐳 On the NAS/Server (to register the new Mac)")
             register_new_mac
@@ -373,6 +366,118 @@ add_another_node() {
             main_menu
             ;;
     esac
+}
+
+# Setup an additional Mac (uses existing SSH key from Synology)
+setup_additional_mac() {
+    gum style \
+        --foreground 212 \
+        --border-foreground 212 \
+        --border normal \
+        --padding "1 2" \
+        "🖥️ Setup Additional Mac"
+
+    echo ""
+    gum style --foreground 252 "I'll set up this Mac and fetch the existing SSH key from your Synology."
+    echo ""
+
+    # First, get Synology details to fetch the existing key
+    gum style --foreground 226 "First, I need your Synology details to fetch the existing SSH key:"
+    echo ""
+
+    gum style --foreground 252 "What is your Synology's IP address?"
+    local nas_ip=$(gum input --placeholder "192.168.1.100" --prompt "Synology IP: ")
+
+    echo ""
+    gum style --foreground 252 "What is your SSH username for the Synology?"
+    local nas_user=$(gum input --placeholder "admin" --prompt "Synology username: ")
+
+    echo ""
+    gum style --foreground 252 "Where is your Jellyfin config folder?"
+    local jellyfin_config=$(gum input --placeholder "/volume1/docker/jellyfin" --prompt "Jellyfin config: " --value "/volume1/docker/jellyfin")
+
+    echo ""
+    gum style --foreground 212 "🔑 Fetching existing SSH key from Synology..."
+    echo ""
+
+    # Try to fetch the existing public key
+    local ssh_key_path="${jellyfin_config}/rffmpeg/.ssh/id_rsa.pub"
+    local public_key=""
+
+    public_key=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "${nas_user}@${nas_ip}" "cat ${ssh_key_path}" 2>/dev/null)
+
+    if [[ -z "$public_key" ]]; then
+        echo ""
+        gum style --foreground 196 "❌ Could not fetch the SSH key from Synology."
+        gum style --foreground 252 "Possible reasons:"
+        gum style --foreground 252 "  • Wrong IP, username, or path"
+        gum style --foreground 252 "  • SSH not enabled on Synology"
+        gum style --foreground 252 "  • First node not set up yet"
+        echo ""
+        gum style --foreground 226 "You can manually get the key by running on Synology:"
+        gum style --foreground 39 "  cat ${ssh_key_path}"
+        echo ""
+        gum confirm "Return to main menu?" && main_menu
+        return
+    fi
+
+    gum style --foreground 46 "✅ SSH key fetched successfully!"
+    echo ""
+
+    # Add the key to this Mac's authorized_keys
+    gum style --foreground 212 "Adding SSH key to this Mac..."
+    mkdir -p ~/.ssh
+    chmod 700 ~/.ssh
+
+    # Check if key already exists
+    if grep -q "$public_key" ~/.ssh/authorized_keys 2>/dev/null; then
+        gum style --foreground 46 "✅ SSH key already in authorized_keys"
+    else
+        echo "$public_key" >> ~/.ssh/authorized_keys
+        chmod 600 ~/.ssh/authorized_keys
+        gum style --foreground 46 "✅ SSH key added to ~/.ssh/authorized_keys"
+    fi
+
+    echo ""
+    gum style --foreground 212 "Do you also want to install FFmpeg and configure this Mac?"
+    echo ""
+
+    if gum confirm "Run Mac setup (FFmpeg, NFS, energy settings)?"; then
+        # Get NAS details for NFS
+        echo ""
+        gum style --foreground 252 "Enter the NFS path to your media files on the NAS:"
+        local media_path=$(gum input --placeholder "/volume1/data/media" --prompt "Media path: " --value "/volume1/data/media")
+
+        echo ""
+        gum style --foreground 252 "Enter the NFS path for the transcode cache:"
+        local cache_path=$(gum input --placeholder "${jellyfin_config}/cache" --prompt "Cache path: " --value "${jellyfin_config}/cache")
+
+        source "$SCRIPT_DIR/lib/mac-setup.sh"
+        run_mac_setup "$nas_ip" "$media_path" "$cache_path"
+    fi
+
+    # Show final instructions
+    local mac_ip=$(ipconfig getifaddr en0 2>/dev/null || echo "THIS_MAC_IP")
+
+    echo ""
+    gum style --foreground 46 --border double --padding "1 2" \
+        "✅ This Mac is ready!"
+
+    echo ""
+    gum style --foreground 212 "📋 Final step - Register this Mac on your Synology:"
+    echo ""
+    gum style --foreground 245 "Run this command on your Synology (or via SSH):"
+    echo ""
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "ssh -t ${nas_user}@${nas_ip} \"sudo docker exec jellyfin rffmpeg add ${mac_ip} --weight 2\""
+    echo ""
+    gum style --foreground 245 "Then verify with:"
+    echo ""
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "ssh ${nas_user}@${nas_ip} \"sudo docker exec jellyfin rffmpeg status\""
+
+    echo ""
+    gum confirm "Return to main menu?" && main_menu
 }
 
 # Register a new Mac on the server
