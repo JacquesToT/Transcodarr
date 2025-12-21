@@ -548,7 +548,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Live Transcoding - Mac Mini Cluster",
+  "title": "Live Transcoding - Mac Cluster",
   "uid": "transcode-cluster",
   "version": 1,
   "weekStart": ""

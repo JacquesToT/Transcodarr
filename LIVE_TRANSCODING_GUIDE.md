@@ -3,10 +3,25 @@
 **Doel:** Live video transcoding voor Jellyfin offloaden naar een cluster van Mac Mini's met Apple Silicon hardware acceleration (VideoToolbox).
 
 **Status:** ✅ VOLLEDIG WERKEND - PRODUCTIE KLAAR
-**Datum:** 2025-12-20
-**Laatste Update:** NFS architectuur omgedraaid voor stabiliteit
-**Synology IP:** 192.168.175.141
-**Mac Mini M4 IP:** 192.168.175.42
+
+> ## ⚠️ MAAK EERST EEN BACKUP
+>
+> **Voordat je begint, maak backups van:**
+>
+> | Component | Wat backuppen |
+> |-----------|---------------|
+> | **Jellyfin** | Je volledige Jellyfin config folder (bijv. `/volume2/docker/jellyfin`) |
+> | **Docker** | Je `docker-compose.yml` en eventuele custom configuraties |
+> | **Mac** | Noteer je huidige energy settings (`pmset -g`) |
+> | **NFS** | Synology NFS export instellingen (screenshot of export) |
+>
+> De installer wijzigt systeemconfiguraties. Hoewel het ontworpen is om veilig te zijn, zorgen backups ervoor dat je je setup kunt herstellen indien nodig.
+
+> **⚠️ BELANGRIJK:** Dit document bevat placeholder waarden.
+> Vervang deze met jouw eigen configuratie:
+> - `YOUR_NAS_IP` → Je NAS/Synology IP adres (bijv. 192.168.1.100)
+> - `YOUR_MAC_IP` → Je Mac Mini IP adres (bijv. 192.168.1.50)
+> - `YOUR_MAC_USERNAME` → Je Mac gebruikersnaam (run `whoami` op Mac)
 
 ---
 
@@ -34,7 +49,7 @@
 | Component | Status | Details |
 |-----------|--------|---------|
 | FFmpeg + VideoToolbox op macOS | ✅ Actief | FFmpeg 8.0.1 (homebrew) met VideoToolbox + libfdk_aac |
-| SSH van Synology naar Mac Mini | ✅ Actief | ED25519 key, user "Nick Roodenrijs" |
+| SSH van Synology naar Mac Mini | ✅ Actief | ED25519 key, user "YOUR_MAC_USERNAME" |
 | NFS mount Mac → Synology media | ✅ Persistent | Auto-mount via LaunchDaemon voor /data/media |
 | NFS mount Mac → Synology cache | ✅ **NIEUW** | Mac Mini mount Synology cache (omgekeerde richting) |
 | rffmpeg load balancing | ✅ **ACTIEF** | Mac Mini registered met weight 2 |
@@ -69,7 +84,7 @@
 │                     NFS: Synology = Server, Mac = Client                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│    SYNOLOGY NAS (192.168.175.141)                                           │
+│    SYNOLOGY NAS (YOUR_NAS_IP)                                           │
 │    ┌──────────────────────────────────────────────────────────────────┐     │
 │    │                         Jellyfin Container                        │     │
 │    │                  (linuxserver/jellyfin:latest)                   │     │
@@ -93,11 +108,11 @@
 │                              │ NFS Mount                         │          │
 │                              ▼                                    ▼          │
 │    ┌─────────────────────────────────────────────────────────────────┐      │
-│    │                    MAC MINI M4 (192.168.175.42)                  │      │
+│    │                    MAC MINI M4 (YOUR_MAC_IP)                  │      │
 │    │                                                                  │      │
 │    │   NFS Mounts (Mac = Client):                                    │      │
-│    │   ├─► /data/media ──────────► 192.168.175.141:/volume1/data/media│     │
-│    │   └─► /config/cache ────────► 192.168.175.141:/volume2/docker/   │      │
+│    │   ├─► /data/media ──────────► YOUR_NAS_IP:/volume1/data/media│     │
+│    │   └─► /config/cache ────────► YOUR_NAS_IP:/volume2/docker/   │      │
 │    │                                jellyfin/cache (symlink)          │      │
 │    │                                                                  │      │
 │    │   ┌────────────────┐    ┌─────────────────┐                     │      │
@@ -144,7 +159,7 @@
 
 **Installatie:** Via linuxserver Docker mod (`linuxserver/mods:jellyfin-rffmpeg`)
 
-### 2. Mac Mini M4 (192.168.175.42)
+### 2. Mac Mini M4 (YOUR_MAC_IP)
 
 **Geïnstalleerde software:**
 | Component | Versie | Pad |
@@ -155,9 +170,9 @@
 | node_exporter | 1.10.2 | /opt/homebrew/bin/node_exporter |
 
 **Configuratie:**
-- SSH user: `Nick Roodenrijs`
+- SSH user: `YOUR_MAC_USERNAME`
 - SSH key: ED25519 (zie /config/rffmpeg/.ssh/id_rsa)
-- NFS mount (input): `/data/media` → `192.168.175.141:/volume1/data/media`
+- NFS mount (input): `/data/media` → `YOUR_NAS_IP:/volume1/data/media`
 - NFS export (output): `/Users/Shared/jellyfin-cache` → Synology Docker volume
 - Synthetic links: `/data` en `/config` via `/etc/synthetic.conf`
 - VideoToolbox: h264_videotoolbox, hevc_videotoolbox
@@ -194,7 +209,7 @@ pmset -g
 - PUID=1032
 - PGID=65537
 - TZ=Europe/Amsterdam
-- JELLYFIN_PublishedServerUrl=192.168.175.141
+- JELLYFIN_PublishedServerUrl=YOUR_NAS_IP
 - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg
 - FFMPEG_PATH=/usr/local/bin/ffmpeg
 ```
@@ -210,7 +225,7 @@ pmset -g
    # Remote Login aanzetten in System Preferences > Sharing
    # SSH key genereren en kopiëren
    ssh-keygen -t ed25519 -f macmini_ssh_key -C "claude-macmini-access"
-   ssh-copy-id -i macmini_ssh_key.pub "Nick Roodenrijs@192.168.175.42"
+   ssh-copy-id -i macmini_ssh_key.pub "YOUR_MAC_USERNAME@YOUR_MAC_IP"
    ```
 
 2. **Homebrew installeren**
@@ -238,7 +253,7 @@ pmset -g
 5. **NFS mount configureren**
    ```bash
    sudo mkdir -p /data/media
-   sudo mount -t nfs -o resvport,rw,nolock 192.168.175.141:/volume1/data/media /data/media
+   sudo mount -t nfs -o resvport,rw,nolock YOUR_NAS_IP:/volume1/data/media /data/media
    ```
 
 ### Fase 2: Persistent NFS Mount ✅
@@ -247,7 +262,7 @@ pmset -g
 ```bash
 #!/bin/bash
 MOUNT_POINT="/data/media"
-NFS_SHARE="192.168.175.141:/volume1/data/media"
+NFS_SHARE="YOUR_NAS_IP:/volume1/data/media"
 LOG_FILE="/var/log/mount-nfs-media.log"
 
 log() {
@@ -256,7 +271,7 @@ log() {
 
 # Wait for network
 for i in {1..30}; do
-    if ping -c1 -W1 192.168.175.141 >/dev/null 2>&1; then
+    if ping -c1 -W1 YOUR_NAS_IP >/dev/null 2>&1; then
         log "Network available after $i seconds"
         break
     fi
@@ -303,7 +318,7 @@ services:
       - PUID=1032
       - PGID=65537
       - TZ=Europe/Amsterdam
-      - JELLYFIN_PublishedServerUrl=192.168.175.141
+      - JELLYFIN_PublishedServerUrl=YOUR_NAS_IP
       - UMASK=022
       - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg
       - FFMPEG_PATH=/usr/local/bin/ffmpeg
@@ -338,7 +353,7 @@ volumes:
 docker volume create \
   --driver local \
   --opt type=nfs \
-  --opt o=addr=192.168.175.42,rw,nolock,vers=3,soft,timeo=10,retrans=3 \
+  --opt o=addr=YOUR_MAC_IP,rw,nolock,vers=3,soft,timeo=10,retrans=3 \
   --opt device=:/Users/Shared/jellyfin-cache \
   macmini-cache
 
@@ -363,7 +378,7 @@ rffmpeg:
         group: abc
 
     remote:
-        user: "Nick Roodenrijs"
+        user: "YOUR_MAC_USERNAME"
         persist: 300
         args:
             - "-o"
@@ -385,13 +400,13 @@ rffmpeg:
 
 ```bash
 # In Jellyfin container:
-docker exec jellyfin rffmpeg add 192.168.175.42 --weight 2
+docker exec jellyfin rffmpeg add YOUR_MAC_IP --weight 2
 
 # Verificatie:
 docker exec jellyfin rffmpeg status
 # Output:
 # Hostname        Servername      ID  Weight  State  Active Commands
-# 192.168.175.42  192.168.175.42  1   2       idle   N/A
+# YOUR_MAC_IP  YOUR_MAC_IP  1   2       idle   N/A
 ```
 
 ### Fase 5: Synology Cache met Mac Mini NFS Mount ✅
@@ -410,7 +425,7 @@ De originele setup (Mac Mini als NFS server → Synology) was instabiel. De nieu
 ```
 Mac Mini (FFmpeg)
       │
-      │ NFS mount: 192.168.175.141:/volume2/docker/jellyfin/cache
+      │ NFS mount: YOUR_NAS_IP:/volume2/docker/jellyfin/cache
       │            → /Users/Shared/jellyfin-cache
       ▼
       │ Symlink: /config/cache → /Users/Shared/jellyfin-cache
@@ -445,14 +460,14 @@ docker run -d \
    ```bash
    #!/bin/bash
    MOUNT_POINT="/Users/Shared/jellyfin-cache"
-   NFS_SHARE="192.168.175.141:/volume2/docker/jellyfin/cache"
+   NFS_SHARE="YOUR_NAS_IP:/volume2/docker/jellyfin/cache"
    LOG_FILE="/var/log/mount-synology-cache.log"
 
    log() { echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"; }
 
    # Wait for network
    for i in {1..30}; do
-       ping -c1 -W1 192.168.175.141 >/dev/null 2>&1 && break
+       ping -c1 -W1 YOUR_NAS_IP >/dev/null 2>&1 && break
        sleep 1
    done
 
@@ -487,7 +502,7 @@ docker run -d \
 ```bash
 # Op Mac Mini - check mount
 mount | grep jellyfin-cache
-# Moet tonen: 192.168.175.141:/volume2/docker/jellyfin/cache on /Users/Shared/jellyfin-cache
+# Moet tonen: YOUR_NAS_IP:/volume2/docker/jellyfin/cache on /Users/Shared/jellyfin-cache
 
 # Test schrijven
 echo "test" > /Users/Shared/jellyfin-cache/transcodes/test.txt
@@ -521,7 +536,7 @@ docker exec jellyfin ls -la /config/cache/transcodes/
 
 # Docker volume (NFS naar Mac Mini)
 docker volume inspect macmini-cache
-# Mountpoint: addr=192.168.175.42,rw,nolock,vers=3
+# Mountpoint: addr=YOUR_MAC_IP,rw,nolock,vers=3
 # Device: :/Users/Shared/jellyfin-cache
 ```
 
@@ -568,7 +583,7 @@ docker volume inspect macmini-cache
 scrape_configs:
   - job_name: 'transcode-nodes'
     static_configs:
-      - targets: ['192.168.175.42:9100']
+      - targets: ['YOUR_MAC_IP:9100']
         labels:
           node: 'macmini-m4'
           chip: 'm4'
@@ -579,7 +594,7 @@ scrape_configs:
 Een dashboard JSON is beschikbaar in: `grafana-dashboard.json`
 
 **Importeren:**
-1. Open Grafana (http://192.168.175.141:4001)
+1. Open Grafana (http://YOUR_NAS_IP:4001)
 2. Ga naar Dashboards → Import
 3. Upload `grafana-dashboard.json`
 4. Selecteer de Prometheus datasource
@@ -597,7 +612,7 @@ Een dashboard JSON is beschikbaar in: `grafana-dashboard.json`
 Geïnstalleerd via Homebrew en draait als service:
 ```bash
 brew services start node_exporter
-# Metrics beschikbaar op http://192.168.175.42:9100/metrics
+# Metrics beschikbaar op http://YOUR_MAC_IP:9100/metrics
 ```
 
 ---
@@ -628,7 +643,7 @@ docker exec jellyfin rffmpeg remove hostname
 ```bash
 docker exec -u abc jellyfin ssh -o StrictHostKeyChecking=no \
   -i /config/rffmpeg/.ssh/id_rsa \
-  "Nick Roodenrijs@192.168.175.42" \
+  "YOUR_MAC_USERNAME@YOUR_MAC_IP" \
   "/opt/homebrew/bin/ffmpeg -version"
 ```
 
@@ -636,7 +651,7 @@ docker exec -u abc jellyfin ssh -o StrictHostKeyChecking=no \
 
 ```bash
 # SSH verbinding
-ssh -i macmini_ssh_key "Nick Roodenrijs@192.168.175.42"
+ssh -i macmini_ssh_key "YOUR_MAC_USERNAME@YOUR_MAC_IP"
 
 # Check NFS mount
 mount | grep /data/media
@@ -683,7 +698,7 @@ ffmpeg -encoders 2>&1 | grep fdk
 
 **Na installatie:** Mac Mini weer toevoegen aan rffmpeg:
 ```bash
-docker exec jellyfin rffmpeg add 192.168.175.42 --weight 2
+docker exec jellyfin rffmpeg add YOUR_MAC_IP --weight 2
 ```
 
 ### Exit Code 254 Probleem (OPGELOST ✅)
@@ -730,16 +745,16 @@ sudo docker rm jellyfin
 sudo docker volume rm macmini-cache
 
 # 3. Check Mac Mini NFS server
-ssh -i macmini_ssh_key "Nick Roodenrijs@192.168.175.42" "sudo nfsd status && showmount -e localhost"
+ssh -i macmini_ssh_key "YOUR_MAC_USERNAME@YOUR_MAC_IP" "sudo nfsd status && showmount -e localhost"
 
 # 4. Herstart Mac Mini NFS indien nodig
-ssh -i macmini_ssh_key "Nick Roodenrijs@192.168.175.42" "sudo nfsd restart"
+ssh -i macmini_ssh_key "YOUR_MAC_USERNAME@YOUR_MAC_IP" "sudo nfsd restart"
 
 # 5. Maak nieuw NFS volume MET SOFT TIMEOUT OPTIES
 sudo docker volume create \
   --driver local \
   --opt type=nfs \
-  --opt o=addr=192.168.175.42,rw,nolock,vers=3,soft,timeo=10,retrans=3 \
+  --opt o=addr=YOUR_MAC_IP,rw,nolock,vers=3,soft,timeo=10,retrans=3 \
   --opt device=:/Users/Shared/jellyfin-cache \
   macmini-cache
 
@@ -759,7 +774,7 @@ sudo docker run -d \
   --network traefik-network \
   -p 8096:8096/tcp -p 8920:8920/tcp -p 7359:7359/udp \
   -e PUID=1032 -e PGID=65537 -e TZ=Europe/Amsterdam \
-  -e JELLYFIN_PublishedServerUrl=192.168.175.141 \
+  -e JELLYFIN_PublishedServerUrl=YOUR_NAS_IP \
   -e UMASK=022 \
   -e DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg \
   -e FFMPEG_PATH=/usr/local/bin/ffmpeg \
@@ -874,7 +889,7 @@ Zonder Mac Mini valt Jellyfin terug op software encoding (libx264) wat ~1x realt
    ```yaml
    - job_name: 'transcode-nodes'
      static_configs:
-       - targets: ['192.168.175.42:9100', 'NEW_IP:9100']
+       - targets: ['YOUR_MAC_IP:9100', 'NEW_IP:9100']
          labels:
            node: 'macmini-m4'
    ```
@@ -911,10 +926,10 @@ ffmpeg -i input.mkv -c:v h264_videotoolbox -b:v 8M -f hls -hls_time 2 output.m3u
 
 ```bash
 # Mac Mini M4
-ssh -i macmini_ssh_key "Nick Roodenrijs@192.168.175.42"
+ssh -i macmini_ssh_key "YOUR_MAC_USERNAME@YOUR_MAC_IP"
 
 # Synology
-ssh -i synology_ssh_key ssh@192.168.175.141
+ssh -i synology_ssh_key ssh@YOUR_NAS_IP
 ```
 
 ### Docker Commando's (op Synology)
@@ -942,8 +957,8 @@ sudo docker exec -u abc jellyfin rffmpeg clear
 # Check NFS mounts (beide moeten actief zijn!)
 mount | grep -E '/data/media|jellyfin-cache'
 # Verwacht:
-# 192.168.175.141:/volume1/data/media on /data/media
-# 192.168.175.141:/volume2/docker/jellyfin/cache on /Users/Shared/jellyfin-cache
+# YOUR_NAS_IP:/volume1/data/media on /data/media
+# YOUR_NAS_IP:/volume2/docker/jellyfin/cache on /Users/Shared/jellyfin-cache
 
 # Restart media mount
 sudo /usr/local/bin/mount-nfs-media.sh
@@ -964,9 +979,9 @@ brew services list | grep node_exporter
 
 ### Prometheus/Grafana
 
-- Prometheus: http://192.168.175.141:9090
-- Grafana: http://192.168.175.141:4001
-- Mac Mini metrics: http://192.168.175.42:9100/metrics
+- Prometheus: http://YOUR_NAS_IP:9090
+- Grafana: http://YOUR_NAS_IP:4001
+- Mac Mini metrics: http://YOUR_MAC_IP:9100/metrics
 
 ---
 

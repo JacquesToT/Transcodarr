@@ -1,5 +1,11 @@
-# rffmpeg Configuration for Live Distributed Transcoding
-# Mac Mini M4 (192.168.175.42) als primary transcode node
+# rffmpeg Configuration Template for Transcodarr
+# This is an EXAMPLE file - the installer generates a customized version
+#
+# Replace the placeholders below with your actual values:
+#   YOUR_MAC_USERNAME = Your Mac username (run `whoami` on Mac to find it)
+#
+# After running the installer, this file will be generated at:
+#   /path/to/jellyfin/config/rffmpeg/rffmpeg.yml
 
 rffmpeg:
     logging:
@@ -14,8 +20,9 @@ rffmpeg:
         group: abc
 
     remote:
-        # SSH user voor Mac Mini (met spatie in naam)
-        user: "Nick Roodenrijs"
+        # SSH user for Mac transcode node
+        # Use your Mac username (may contain spaces, e.g., "John Doe")
+        user: "YOUR_MAC_USERNAME"
         persist: 300
         args:
             - "-o"
@@ -27,9 +34,9 @@ rffmpeg:
 
     commands:
         ssh: "/usr/bin/ssh"
-        # FFmpeg path op de Mac Mini (Homebrew)
+        # FFmpeg paths on Mac (Homebrew on Apple Silicon)
         ffmpeg: "/opt/homebrew/bin/ffmpeg"
         ffprobe: "/opt/homebrew/bin/ffprobe"
-        # Fallback naar lokale ffmpeg als alle remotes falen
+        # Fallback to local ffmpeg if all remotes fail
         fallback_ffmpeg: "/usr/lib/jellyfin-ffmpeg/ffmpeg"
         fallback_ffprobe: "/usr/lib/jellyfin-ffmpeg/ffprobe"

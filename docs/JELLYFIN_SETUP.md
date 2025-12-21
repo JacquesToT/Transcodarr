@@ -5,7 +5,7 @@ Complete guide for setting up Jellyfin with rffmpeg for distributed transcoding.
 ## Prerequisites
 
 - Docker and docker-compose installed
-- Network access to Mac Mini transcode node
+- Network access to Mac transcode node
 - SSH access configured
 
 ## Step 1: Create Directory Structure
@@ -20,18 +20,18 @@ sudo mkdir -p /volume2/docker/jellyfin/cache
 
 ## Step 2: Generate SSH Key
 
-Generate an SSH key pair for rffmpeg to connect to Mac Mini:
+Generate an SSH key pair for rffmpeg to connect to Mac:
 
 ```bash
 ssh-keygen -t ed25519 -f /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa -N "" -C "transcodarr"
 chmod 600 /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa
 ```
 
-Copy the public key to your Mac Mini:
+Copy the public key to your Mac:
 
 ```bash
 cat /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
-# Add this to ~/.ssh/authorized_keys on the Mac Mini
+# Add this to ~/.ssh/authorized_keys on the Mac
 ```
 
 ## Step 3: Create rffmpeg Configuration
@@ -52,7 +52,7 @@ rffmpeg:
         group: abc
 
     remote:
-        # Replace with your Mac Mini username
+        # Replace with your Mac username
         user: "Your Username"
         persist: 300
         args:
@@ -105,12 +105,12 @@ Start the container:
 docker compose up -d
 ```
 
-## Step 5: Add Mac Mini Node
+## Step 5: Add Mac Node
 
-Wait for the container to fully start, then add your Mac Mini:
+Wait for the container to fully start, then add your Mac:
 
 ```bash
-# Replace IP with your Mac Mini's IP
+# Replace IP with your Mac's IP
 docker exec jellyfin rffmpeg add 192.168.1.50 --weight 2
 
 # Verify
@@ -192,15 +192,15 @@ docker exec jellyfin cat /config/log/rffmpeg.log | tail -50
 
 Common issues:
 - `libfdk_aac` not installed on Mac → Install FFmpeg with fdk-aac
-- NFS mount stale → Remount on Mac Mini
+- NFS mount stale → Remount on Mac
 - SSH connection timeout → Check firewall/network
 
 ### Fallback to localhost
 
 If all remotes fail, rffmpeg falls back to local transcoding. Check:
 
-1. SSH connectivity to Mac Mini
-2. FFmpeg path on Mac Mini
+1. SSH connectivity to Mac
+2. FFmpeg path on Mac
 3. NFS mounts are working
 
 ## User Bitrate Limits
@@ -213,7 +213,7 @@ For users on slow connections, set per-user limits:
 
 ## NFS Volume Option (Advanced)
 
-If you want Mac Mini to handle the cache, create an NFS volume:
+If you want Mac to handle the cache, create an NFS volume:
 
 ```bash
 docker volume create \
@@ -224,4 +224,4 @@ docker volume create \
     macmini-cache
 ```
 
-The `soft,timeo=10,retrans=3` options prevent hangs if Mac Mini is unreachable.
+The `soft,timeo=10,retrans=3` options prevent hangs if Mac is unreachable.

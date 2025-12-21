@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Transcodarr Uninstaller
-# Removes all Transcodarr components from Mac Mini/Mac Studio
+# Removes all Transcodarr components from Mac
 #
 
 set -e

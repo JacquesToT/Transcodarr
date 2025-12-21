@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Mac Mini Setup Module for Transcodarr
+# Mac Setup Module for Transcodarr
 #
 
 # Install Homebrew if needed

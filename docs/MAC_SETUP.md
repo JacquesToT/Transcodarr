@@ -1,6 +1,6 @@
-# Mac Mini Setup Guide
+# Mac Setup Guide
 
-Complete guide for setting up a Mac Mini as a transcode node for Transcodarr.
+Complete guide for setting up an Apple Silicon Mac as a transcode node for Transcodarr.
 
 ## Requirements
 
@@ -327,7 +327,7 @@ All sleep values should be 0.
 
 ## Adding to rffmpeg
 
-Once the Mac Mini is set up, add it to rffmpeg on your Jellyfin server:
+Once the Mac is set up, add it to rffmpeg on your Jellyfin server:
 
 ```bash
 docker exec jellyfin rffmpeg add YOUR_MAC_IP --weight 2

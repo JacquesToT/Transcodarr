@@ -1,15 +1,38 @@
 # Transcodarr
 
-**Distributed Live Transcoding for Jellyfin using Mac Mini's with Apple Silicon**
+**Distributed Live Transcoding for Jellyfin using Apple Silicon Macs**
 
-Offload live video transcoding from your NAS/server to Mac Mini's with hardware-accelerated VideoToolbox encoding. Get 7-13x realtime transcoding speeds with Apple Silicon.
+Offload live video transcoding from your NAS/server to Apple Silicon Macs with hardware-accelerated VideoToolbox encoding. Get 7-13x realtime transcoding speeds with Apple Silicon.
+
+> ## ⚠️ BACKUP FIRST
+>
+> **Before running the installer, create backups of:**
+>
+> | Component | What to backup |
+> |-----------|----------------|
+> | **Jellyfin** | Your entire Jellyfin config folder (e.g., `/volume2/docker/jellyfin`) |
+> | **Docker** | Your `docker-compose.yml` and any custom configurations |
+> | **Mac** | Note your current energy settings (`pmset -g`) |
+>
+> The installer modifies system configurations. While it's designed to be safe, having backups ensures you can restore your setup if needed.
+
+## 🚀 New Here? Start Here!
+
+**[📖 QUICKSTART.md](QUICKSTART.md)** - Get up and running in 15 minutes
+
+```bash
+git clone https://github.com/yourusername/Transcodarr.git
+cd Transcodarr
+chmod +x install.sh
+./install.sh
+```
 
 ## Features
 
 - **Hardware Acceleration**: Uses Apple Silicon VideoToolbox (H.264/HEVC)
-- **Distributed Transcoding**: Offload transcoding from your NAS to Mac Mini's
-- **Load Balancing**: Distribute workload across multiple Mac Mini's
-- **Automatic Fallback**: Falls back to local transcoding if Mac Mini is unavailable
+- **Distributed Transcoding**: Offload transcoding from your NAS to Apple Silicon Macs
+- **Load Balancing**: Distribute workload across multiple Macs
+- **Automatic Fallback**: Falls back to local transcoding if Mac is unavailable
 - **Easy Setup**: Interactive installer with step-by-step guidance
 - **Monitoring**: Prometheus + Grafana dashboard included
 
@@ -23,7 +46,7 @@ Offload live video transcoding from your NAS/server to Mac Mini's with hardware-
 
 ## Requirements
 
-### Mac Mini (Transcode Node)
+### Mac (Transcode Node)
 - macOS Sequoia 15.x or later
 - Apple Silicon (M1/M2/M3/M4)
 - Network connection to NAS
@@ -31,7 +54,7 @@ Offload live video transcoding from your NAS/server to Mac Mini's with hardware-
 ### Server (Jellyfin Host)
 - Docker with docker-compose
 - NFS server capability (for media sharing)
-- Network connection to Mac Mini
+- Network connection to Mac transcode node
 
 ## Quick Start
 
@@ -74,7 +97,7 @@ The interactive installer will guide you through:
 
 See the full setup guide: [LIVE_TRANSCODING_GUIDE.md](LIVE_TRANSCODING_GUIDE.md)
 
-### Mac Mini Quick Setup
+### Mac Quick Setup
 
 ```bash
 # Install Homebrew
@@ -108,7 +131,7 @@ services:
 ```
 
 ```bash
-# Add Mac Mini to rffmpeg
+# Add Mac to rffmpeg
 docker exec jellyfin rffmpeg add 192.168.1.50 --weight 2
 docker exec jellyfin rffmpeg status
 ```
@@ -142,10 +165,10 @@ docker exec jellyfin rffmpeg status
 transcodarr/
 ├── install.sh              # Interactive installer
 ├── lib/
-│   ├── mac-setup.sh        # Mac Mini setup module
+│   ├── mac-setup.sh        # Mac setup module
 │   └── jellyfin-setup.sh   # Jellyfin/Docker setup module
 ├── scripts/
-│   ├── add-mac-node.sh     # Add Mac Mini to rffmpeg
+│   ├── add-mac-node.sh     # Add Mac to rffmpeg
 │   └── test-ssh.sh         # Test SSH connection
 ├── rffmpeg/
 │   └── rffmpeg.yml         # rffmpeg configuration template

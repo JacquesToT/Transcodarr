@@ -47,6 +47,28 @@ show_banner() {
         "Using Apple Silicon Macs with VideoToolbox"
 }
 
+# Show backup warning
+show_backup_warning() {
+    echo ""
+    gum style \
+        --foreground 226 \
+        --border-foreground 226 \
+        --border normal \
+        --padding "1 2" \
+        "⚠️  BACKUP REMINDER" \
+        "" \
+        "Before continuing, make sure you have backups of:" \
+        "  • Jellyfin config folder" \
+        "  • Docker compose files" \
+        "  • Current Mac energy settings (pmset -g)"
+    echo ""
+
+    if ! gum confirm "I have created backups or understand the risks"; then
+        gum style --foreground 252 "Please create backups first, then run the installer again."
+        exit 0
+    fi
+}
+
 # Detect system type
 detect_system() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -193,23 +215,19 @@ main_menu() {
         --header "What would you like to do?" \
         --cursor.foreground 212 \
         --selected.foreground 212 \
-        "🖥️  Setup Apple Silicon Mac as Transcode Node" \
-        "🐳 Setup Jellyfin with rffmpeg (Docker)" \
-        "🔧 Configure Existing Installation" \
+        "🚀 First Time Setup (start here if new)" \
+        "➕ Add Another Mac to Existing Setup" \
         "📊 Setup Monitoring (Prometheus/Grafana)" \
         "📖 View Documentation" \
-        "🗑️  Uninstall Transcodarr" \
+        "🗑️  Uninstall from this Mac" \
         "❌ Exit")
 
     case "$choice" in
-        "🖥️  Setup Apple Silicon Mac as Transcode Node")
-            setup_apple_silicon
+        "🚀 First Time Setup (start here if new)")
+            first_time_setup
             ;;
-        "🐳 Setup Jellyfin with rffmpeg (Docker)")
-            setup_jellyfin
-            ;;
-        "🔧 Configure Existing Installation")
-            configure_existing
+        "➕ Add Another Mac to Existing Setup")
+            add_another_node
             ;;
         "📊 Setup Monitoring (Prometheus/Grafana)")
             setup_monitoring
@@ -217,7 +235,7 @@ main_menu() {
         "📖 View Documentation")
             view_docs
             ;;
-        "🗑️  Uninstall Transcodarr")
+        "🗑️  Uninstall from this Mac")
             uninstall_transcodarr
             ;;
         "❌ Exit")
@@ -225,6 +243,137 @@ main_menu() {
             exit 0
             ;;
     esac
+}
+
+# First time setup - guided flow for new users
+first_time_setup() {
+    gum style \
+        --foreground 212 \
+        --border-foreground 212 \
+        --border double \
+        --padding "1 2" \
+        "🚀 First Time Setup"
+
+    echo ""
+    gum style --foreground 252 "This will guide you through setting up Transcodarr for the first time."
+    gum style --foreground 252 "You'll need to run this installer on TWO machines:"
+    echo ""
+    gum style --foreground 39 "  1. Your Mac      → to install FFmpeg and configure it as transcode node"
+    gum style --foreground 39 "  2. Your NAS/PC   → to configure Jellyfin with rffmpeg"
+    echo ""
+
+    local where_am_i
+    where_am_i=$(gum choose \
+        --header "Where are you running this installer right now?" \
+        --cursor.foreground 212 \
+        "🖥️  On the Mac (that will do transcoding)" \
+        "🐳 On the NAS/Server (where Jellyfin runs)" \
+        "⬅️  Back to main menu")
+
+    case "$where_am_i" in
+        "🖥️  On the Mac (that will do transcoding)")
+            setup_apple_silicon
+            ;;
+        "🐳 On the NAS/Server (where Jellyfin runs)")
+            setup_jellyfin
+            ;;
+        "⬅️  Back to main menu")
+            main_menu
+            ;;
+    esac
+}
+
+# Add another Mac node to existing setup
+add_another_node() {
+    gum style \
+        --foreground 212 \
+        --border-foreground 212 \
+        --border normal \
+        --padding "1 2" \
+        "➕ Add Another Mac"
+
+    echo ""
+    gum style --foreground 252 "You already have Transcodarr working and want to add another Mac."
+    echo ""
+
+    local where_am_i
+    where_am_i=$(gum choose \
+        --header "Where are you running this right now?" \
+        --cursor.foreground 212 \
+        "🖥️  On the NEW Mac (that I want to add)" \
+        "🐳 On the NAS/Server (to register the new Mac)" \
+        "⬅️  Back to main menu")
+
+    case "$where_am_i" in
+        "🖥️  On the NEW Mac (that I want to add)")
+            echo ""
+            gum style --foreground 252 "Great! I'll set up this Mac as a transcode node."
+            gum style --foreground 252 "After this, you'll need to register it on your Jellyfin server."
+            echo ""
+            if gum confirm "Continue?"; then
+                setup_apple_silicon
+            else
+                main_menu
+            fi
+            ;;
+        "🐳 On the NAS/Server (to register the new Mac)")
+            register_new_mac
+            ;;
+        "⬅️  Back to main menu")
+            main_menu
+            ;;
+    esac
+}
+
+# Register a new Mac on the server
+register_new_mac() {
+    gum style --foreground 212 "📝 Register New Mac"
+    echo ""
+    gum style --foreground 252 "Make sure the new Mac has already been set up with:"
+    gum style --foreground 39 "  • FFmpeg installed (via this installer or Homebrew)"
+    gum style --foreground 39 "  • Remote Login (SSH) enabled"
+    gum style --foreground 39 "  • SSH key from Jellyfin added to ~/.ssh/authorized_keys"
+    echo ""
+
+    if ! gum confirm "Has the new Mac been prepared?"; then
+        gum style --foreground 226 "Please run the installer on the new Mac first."
+        echo ""
+        gum confirm "Return to main menu?" && main_menu
+        return
+    fi
+
+    # Get current Mac's IP to show as hint
+    local this_mac_ip=$(ipconfig getifaddr en0 2>/dev/null || echo "")
+
+    echo ""
+    gum style --foreground 252 "Enter the IP address of the new Mac you want to add:"
+    if [[ -n "$this_mac_ip" ]]; then
+        gum style --foreground 245 "(This Mac's IP is: ${this_mac_ip})"
+    fi
+    local mac_ip=$(gum input --placeholder "192.168.1.51" --prompt "New Mac IP: ")
+
+    echo ""
+    gum style --foreground 252 "Enter the weight for this node (higher = more jobs, 1-10):"
+    local weight=$(gum input --placeholder "2" --prompt "Weight: " --value "2")
+
+    echo ""
+    gum style --foreground 212 "Run this command on your Synology/server:"
+    echo ""
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "docker exec jellyfin rffmpeg add ${mac_ip} --weight ${weight}"
+
+    echo ""
+    gum style --foreground 245 "💡 If you get a permission error, try with sudo:"
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "sudo docker exec jellyfin rffmpeg add ${mac_ip} --weight ${weight}"
+
+    echo ""
+    gum style --foreground 252 "Then verify with:"
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "docker exec jellyfin rffmpeg status"
+
+    echo ""
+    gum confirm "Return to main menu?" && main_menu
 }
 
 # Uninstall Transcodarr
@@ -280,10 +429,18 @@ setup_apple_silicon() {
     # Get configuration
     echo ""
     gum style --foreground 212 "📝 Configuration"
+    echo ""
 
-    NAS_IP=$(gum input --placeholder "192.168.1.100" --prompt "Synology/NAS IP address: ")
-    MEDIA_PATH=$(gum input --placeholder "/volume1/data/media" --prompt "NAS media path: " --value "/volume1/data/media")
-    CACHE_PATH=$(gum input --placeholder "/volume2/docker/jellyfin/cache" --prompt "NAS cache path: " --value "/volume2/docker/jellyfin/cache")
+    gum style --foreground 252 "Enter the IP address of your Synology/NAS (where your media is stored):"
+    NAS_IP=$(gum input --placeholder "192.168.1.100" --prompt "NAS IP: ")
+
+    echo ""
+    gum style --foreground 252 "Enter the NFS export path to your media files on the NAS:"
+    MEDIA_PATH=$(gum input --placeholder "/volume1/data/media" --prompt "Media path: " --value "/volume1/data/media")
+
+    echo ""
+    gum style --foreground 252 "Enter the NFS export path for the transcode cache on the NAS:"
+    CACHE_PATH=$(gum input --placeholder "/volume2/docker/jellyfin/cache" --prompt "Cache path: " --value "/volume2/docker/jellyfin/cache")
 
     echo ""
     gum style --foreground 212 "🔍 Running pre-flight checks..."
@@ -320,7 +477,68 @@ setup_apple_silicon() {
     run_mac_setup "$NAS_IP" "$MEDIA_PATH" "$CACHE_PATH"
 
     echo ""
-    gum style --foreground 46 "✅ Apple Silicon Mac setup complete!"
+    gum style --foreground 46 --border double --padding "1 2" \
+        "✅ Mac setup complete!"
+
+    echo ""
+    gum style --foreground 252 "This Mac is now ready to receive transcoding jobs."
+    gum style --foreground 252 "Next, you need to configure the Jellyfin/server side."
+    echo ""
+
+    local next_step
+    next_step=$(gum choose \
+        --header "What would you like to do next?" \
+        --cursor.foreground 212 \
+        "🐳 Continue to Jellyfin Setup (generate server config files)" \
+        "📋 Show me what to do manually" \
+        "⬅️  Return to main menu")
+
+    case "$next_step" in
+        "🐳 Continue to Jellyfin Setup (generate server config files)")
+            setup_jellyfin
+            ;;
+        "📋 Show me what to do manually")
+            show_manual_next_steps "$NAS_IP"
+            ;;
+        "⬅️  Return to main menu")
+            main_menu
+            ;;
+    esac
+}
+
+# Show manual next steps after Mac setup
+show_manual_next_steps() {
+    local nas_ip="$1"
+    local mac_ip=$(ipconfig getifaddr en0 2>/dev/null || echo "YOUR_MAC_IP")
+    local mac_user=$(whoami)
+
+    echo ""
+    gum style --foreground 212 --border normal --padding "1 2" \
+        "📋 Manual Next Steps"
+
+    echo ""
+    gum style --foreground 226 "On your Synology/Server, you need to:"
+    echo ""
+    gum style --foreground 252 "1. Install Jellyfin with the rffmpeg Docker mod"
+    gum style --foreground 252 "2. Generate an SSH key and copy it to this Mac"
+    gum style --foreground 252 "3. Create rffmpeg.yml config pointing to this Mac"
+    gum style --foreground 252 "4. Add this Mac as a transcode node"
+
+    echo ""
+    gum style --foreground 226 "This Mac's details:"
+    gum style --foreground 39 "  IP Address: ${mac_ip}"
+    gum style --foreground 39 "  Username:   ${mac_user}"
+
+    echo ""
+    gum style --foreground 226 "Command to add this Mac to rffmpeg (run on server):"
+    echo ""
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
+
+    echo ""
+    gum style --foreground 252 "For detailed instructions, run the Jellyfin Setup option"
+    gum style --foreground 252 "or read the documentation."
+
     echo ""
     gum confirm "Return to main menu?" && main_menu
 }
@@ -350,18 +568,31 @@ setup_jellyfin() {
     # Get configuration
     echo ""
     gum style --foreground 212 "📝 Configuration"
+    gum style --foreground 252 "I'll ask for 3 things, then generate all config files for you."
+    echo ""
 
-    MAC_IP=$(gum input --placeholder "192.168.1.50" --prompt "Transcode node IP: ")
-    MAC_USER=$(gum input --placeholder "username" --prompt "Transcode node SSH user: ")
-    JELLYFIN_PATH=$(gum input --placeholder "/volume2/docker/jellyfin" --prompt "Jellyfin config path: " --value "/volume2/docker/jellyfin")
+    gum style --foreground 226 "1/3 - Mac (transcode node)"
+    gum style --foreground 252 "This is the Apple Silicon Mac that will do the transcoding."
+    gum style --foreground 252 "To find the IP: System Settings → Network → look for your IP address"
+    MAC_IP=$(gum input --placeholder "192.168.1.50" --prompt "Mac IP address: ")
 
     echo ""
-    gum style --foreground 212 "🔧 Starting configuration..."
+    gum style --foreground 252 "To find your username, run 'whoami' in Terminal on your Mac."
+    MAC_USER=$(gum input --placeholder "nick" --prompt "Mac username: ")
+
+    echo ""
+    gum style --foreground 226 "2/3 - Synology/NAS (where Jellyfin runs)"
+    gum style --foreground 252 "This is where your Jellyfin Docker container runs."
+    gum style --foreground 252 "To find the IP: Synology DSM → Control Panel → Network"
+    NAS_IP=$(gum input --placeholder "192.168.1.100" --prompt "NAS IP address: ")
+
+    echo ""
+    gum style --foreground 226 "3/3 - Generating files..."
     echo ""
 
     source "$SCRIPT_DIR/lib/jellyfin-setup.sh"
 
-    run_jellyfin_setup "$MAC_IP" "$MAC_USER" "$JELLYFIN_PATH"
+    run_jellyfin_setup "$MAC_IP" "$MAC_USER" "$NAS_IP"
 
     echo ""
     gum style --foreground 46 "✅ Jellyfin setup complete!"
@@ -369,97 +600,292 @@ setup_jellyfin() {
     gum confirm "Return to main menu?" && main_menu
 }
 
-# Configure existing installation
-configure_existing() {
-    local choice
-    choice=$(gum choose \
-        --header "What would you like to configure?" \
-        --cursor.foreground 212 \
-        "🔑 Add new transcode node" \
-        "📋 View rffmpeg status" \
-        "🔄 Reset rffmpeg state" \
-        "⬅️  Back to main menu")
-
-    case "$choice" in
-        "🔑 Add new transcode node")
-            add_transcode_node
-            ;;
-        "📋 View rffmpeg status")
-            view_rffmpeg_status
-            ;;
-        "🔄 Reset rffmpeg state")
-            reset_rffmpeg
-            ;;
-        "⬅️  Back to main menu")
-            main_menu
-            ;;
-    esac
-}
-
-# Add new transcode node
-add_transcode_node() {
-    gum style --foreground 212 "🔑 Add New Transcode Node"
-
-    MAC_IP=$(gum input --placeholder "192.168.1.50" --prompt "Node IP address: ")
-    MAC_USER=$(gum input --placeholder "username" --prompt "SSH username: ")
-    WEIGHT=$(gum input --placeholder "2" --prompt "Node weight (1-10): " --value "2")
-
-    echo ""
-    gum spin --spinner dot --title "Adding node..." -- sleep 1
-
-    # Generate command
-    CMD="docker exec jellyfin rffmpeg add ${MAC_USER}@${MAC_IP} --weight ${WEIGHT}"
-
-    gum style --foreground 252 "Run this command on your Synology/Docker host:"
-    echo ""
-    gum style --foreground 39 --border normal --padding "0 1" "$CMD"
-    echo ""
-
-    gum confirm "Return to configuration menu?" && configure_existing
-}
-
-# View rffmpeg status
-view_rffmpeg_status() {
-    gum style --foreground 212 "📋 rffmpeg Status"
-    echo ""
-    gum style --foreground 252 "Run this command on your Synology/Docker host:"
-    gum style --foreground 39 --border normal --padding "0 1" "docker exec jellyfin rffmpeg status"
-    echo ""
-    gum confirm "Return to configuration menu?" && configure_existing
-}
-
-# Reset rffmpeg state
-reset_rffmpeg() {
-    gum style --foreground 196 "⚠️  This will clear all rffmpeg state and bad host markers"
-    echo ""
-    if gum confirm "Are you sure?"; then
-        gum style --foreground 252 "Run this command on your Synology/Docker host:"
-        gum style --foreground 39 --border normal --padding "0 1" "docker exec -u abc jellyfin rffmpeg clear"
-    fi
-    echo ""
-    gum confirm "Return to configuration menu?" && configure_existing
-}
-
 # Setup monitoring
 setup_monitoring() {
     gum style \
         --foreground 39 \
         --border-foreground 39 \
-        --border normal \
-        --padding "0 1" \
+        --border double \
+        --padding "1 2" \
         "📊 Monitoring Setup"
 
-    gum style --foreground 252 "This includes:"
     echo ""
-    gum style --foreground 39 "  • Prometheus configuration"
-    gum style --foreground 39 "  • Grafana dashboard import"
-    gum style --foreground 39 "  • node_exporter on transcode nodes"
+    gum style --foreground 212 "What is monitoring?"
+    gum style --foreground 252 "Monitoring lets you see how your Macs are performing:"
+    gum style --foreground 39 "  • CPU usage (how hard is the Mac working?)"
+    gum style --foreground 39 "  • Memory usage (is there enough RAM?)"
+    gum style --foreground 39 "  • Is the Mac online and available?"
     echo ""
 
-    gum style --foreground 252 "Grafana dashboard JSON is available at:"
+    gum style --foreground 212 "How does it work?"
+    gum style --foreground 252 "1. Each Mac runs 'node_exporter' (collects stats)"
+    gum style --foreground 252 "2. Prometheus (on your server) fetches these stats"
+    gum style --foreground 252 "3. Grafana (on your server) shows nice graphs"
+    echo ""
+
+    gum style --foreground 226 "⚠️  This is OPTIONAL - Transcodarr works fine without it!"
+    echo ""
+
+    local choice
+    choice=$(gum choose \
+        --header "What do you want to do?" \
+        --cursor.foreground 212 \
+        "📖 I don't have Prometheus/Grafana yet - show me how to set it up" \
+        "✅ I already have Prometheus/Grafana - just configure it" \
+        "⬅️  Back to main menu (skip monitoring)")
+
+    case "$choice" in
+        "📖 I don't have Prometheus/Grafana yet - show me how to set it up")
+            show_monitoring_full_setup
+            ;;
+        "✅ I already have Prometheus/Grafana - just configure it")
+            show_monitoring_existing_setup
+            ;;
+        "⬅️  Back to main menu (skip monitoring)")
+            main_menu
+            ;;
+    esac
+}
+
+# Full monitoring setup for beginners
+show_monitoring_full_setup() {
+    gum style --foreground 212 --border double --padding "1 2" \
+        "📖 Complete Monitoring Setup Guide"
+
+    echo ""
+    gum style --foreground 252 "This guide will help you set up monitoring from scratch."
+    gum style --foreground 252 "You'll need to do 3 things:"
+    echo ""
+    gum style --foreground 39 "  STEP 1: Install node_exporter on each Mac"
+    gum style --foreground 39 "  STEP 2: Install Prometheus + Grafana on your server"
+    gum style --foreground 39 "  STEP 3: Import the dashboard in Grafana"
+    echo ""
+
+    if ! gum confirm "Ready to start?"; then
+        setup_monitoring
+        return
+    fi
+
+    # STEP 1
+    echo ""
+    gum style --foreground 212 --border normal --padding "0 1" "STEP 1: Install node_exporter on this Mac"
+    echo ""
+    gum style --foreground 252 "node_exporter is a small program that collects stats from your Mac"
+    gum style --foreground 252 "(CPU, memory, disk, network) and makes them available for Prometheus."
+    echo ""
+
+    # Check if already installed
+    if command -v node_exporter &> /dev/null || brew list node_exporter &> /dev/null 2>&1; then
+        gum style --foreground 46 "✅ node_exporter is already installed on this Mac!"
+
+        if pgrep -x "node_exporter" > /dev/null; then
+            gum style --foreground 46 "✅ It's running!"
+        else
+            gum style --foreground 226 "⚠️  It's installed but not running. Starting it..."
+            brew services start node_exporter
+            gum style --foreground 46 "✅ Started!"
+        fi
+    else
+        if gum confirm "Install node_exporter on this Mac now?"; then
+            gum style --foreground 212 "Installing..."
+            brew install node_exporter
+            brew services start node_exporter
+            gum style --foreground 46 "✅ Installed and started!"
+        else
+            gum style --foreground 226 "Skipped. You can install it later with: brew install node_exporter"
+        fi
+    fi
+
+    local mac_ip=$(ipconfig getifaddr en0 2>/dev/null || echo "YOUR_MAC_IP")
+    echo ""
+    gum style --foreground 252 "This Mac's stats are now available at:"
+    gum style --foreground 39 "  http://${mac_ip}:9100/metrics"
+    echo ""
+
+    gum style --foreground 226 "👉 Repeat this step on every Mac you want to monitor!"
+    echo ""
+
+    if ! gum confirm "Continue to Step 2?"; then
+        setup_monitoring
+        return
+    fi
+
+    # STEP 2
+    echo ""
+    gum style --foreground 212 --border normal --padding "0 1" "STEP 2: Install Prometheus + Grafana on your server"
+    echo ""
+    gum style --foreground 252 "You need to run Prometheus and Grafana on your Synology/server."
+    gum style --foreground 252 "The easiest way is with Docker Compose."
+    echo ""
+
+    gum style --foreground 226 "Create this file on your server:"
+    gum style --foreground 245 "  /volume2/docker/monitoring/docker-compose.yml"
+    echo ""
+
+    gum style --foreground 39 --border normal --padding "1 1" "version: '3'
+services:
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:"
+
+    echo ""
+    gum style --foreground 226 "Create this file next to it:"
+    gum style --foreground 245 "  /volume2/docker/monitoring/prometheus.yml"
+    echo ""
+
+    gum style --foreground 39 --border normal --padding "1 1" "global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'transcode-nodes'
+    static_configs:
+      # Add ALL your Macs here!
+      - targets: ['${mac_ip}:9100']
+        labels:
+          node: 'mac-mini'
+      # Example: add a second Mac
+      # - targets: ['192.168.1.51:9100']
+      #   labels:
+      #     node: 'mac-studio'"
+
+    echo ""
+    gum style --foreground 226 "⚠️  IMPORTANT: Add ALL your Macs to prometheus.yml!"
+    gum style --foreground 252 "Each Mac needs its own entry with IP:9100"
+
+    echo ""
+    gum style --foreground 226 "Then start it:"
+    gum style --foreground 39 --border normal --padding "0 1" "cd /volume2/docker/monitoring && sudo docker compose up -d"
+    echo ""
+
+    if ! gum confirm "Continue to Step 3?"; then
+        setup_monitoring
+        return
+    fi
+
+    # STEP 3
+    echo ""
+    gum style --foreground 212 --border normal --padding "0 1" "STEP 3: Import the Dashboard in Grafana"
+    echo ""
+    gum style --foreground 252 "Now let's add a nice dashboard to see your stats!"
+    echo ""
+
+    gum style --foreground 226 "3.1 Open Grafana in your browser:"
+    gum style --foreground 39 "    http://YOUR_SERVER_IP:3000"
+    gum style --foreground 245 "    Default login: admin / admin"
+    echo ""
+
+    gum style --foreground 226 "3.2 Add Prometheus as a data source:"
+    gum style --foreground 252 "    1. Click the gear icon (⚙️) → 'Data sources'"
+    gum style --foreground 252 "    2. Click 'Add data source'"
+    gum style --foreground 252 "    3. Select 'Prometheus'"
+    gum style --foreground 252 "    4. Set URL to: http://prometheus:9090"
+    gum style --foreground 252 "    5. Click 'Save & test'"
+    echo ""
+
+    gum style --foreground 226 "3.3 Import the Transcodarr dashboard:"
+    gum style --foreground 252 "    1. Click '+' → 'Import'"
+    gum style --foreground 252 "    2. Click 'Upload JSON file'"
+    gum style --foreground 252 "    3. Select this file:"
+    echo ""
     gum style --foreground 39 --border normal --padding "0 1" "$SCRIPT_DIR/grafana-dashboard.json"
     echo ""
+    gum style --foreground 252 "    4. Select 'Prometheus' as the data source"
+    gum style --foreground 252 "    5. Click 'Import'"
+    echo ""
 
+    gum style --foreground 46 --border double --padding "1 2" "🎉 Done! You should now see your Mac's stats in Grafana!"
+
+    # Offer to open the file location
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        echo ""
+        if gum confirm "Open the folder with the dashboard file?"; then
+            open "$(dirname "$SCRIPT_DIR/grafana-dashboard.json")"
+        fi
+    fi
+
+    echo ""
+    gum confirm "Return to main menu?" && main_menu
+}
+
+# Quick setup for users who already have Prometheus/Grafana
+show_monitoring_existing_setup() {
+    gum style --foreground 212 --border normal --padding "0 1" \
+        "✅ Quick Setup for Existing Prometheus/Grafana"
+
+    local mac_ip=$(ipconfig getifaddr en0 2>/dev/null || echo "YOUR_MAC_IP")
+
+    echo ""
+    gum style --foreground 226 "1. Install node_exporter on this Mac:"
+    echo ""
+
+    if command -v node_exporter &> /dev/null || brew list node_exporter &> /dev/null 2>&1; then
+        if pgrep -x "node_exporter" > /dev/null; then
+            gum style --foreground 46 "   ✅ Already installed and running!"
+        else
+            gum style --foreground 226 "   ⚠️  Installed but not running"
+            gum style --foreground 39 --border normal --padding "0 1" "brew services start node_exporter"
+        fi
+    else
+        gum style --foreground 39 --border normal --padding "0 1" "brew install node_exporter && brew services start node_exporter"
+    fi
+
+    echo ""
+    gum style --foreground 226 "2. Add this Mac to your prometheus.yml (under scrape_configs → transcode-nodes):"
+    echo ""
+    gum style --foreground 39 --border normal --padding "0 1" "      - targets: ['${mac_ip}:9100']
+        labels:
+          node: 'this-mac'"
+
+    echo ""
+    gum style --foreground 245 "💡 You can add multiple Macs! Each Mac needs its own entry."
+    gum style --foreground 245 "   Example with 2 Macs:"
+    echo ""
+    gum style --foreground 39 --border normal --padding "0 1" "scrape_configs:
+  - job_name: 'transcode-nodes'
+    static_configs:
+      - targets: ['192.168.1.50:9100']
+        labels:
+          node: 'mac-mini'
+      - targets: ['192.168.1.51:9100']
+        labels:
+          node: 'mac-studio'"
+
+    echo ""
+    gum style --foreground 226 "3. Restart Prometheus:"
+    gum style --foreground 39 --border normal --padding "0 1" "sudo docker restart prometheus"
+
+    echo ""
+    gum style --foreground 226 "4. Import dashboard in Grafana:"
+    gum style --foreground 39 --border normal --padding "0 1" "$SCRIPT_DIR/grafana-dashboard.json"
+
+    # Offer to open the file location
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        echo ""
+        if gum confirm "Open the folder with the dashboard file?"; then
+            open "$(dirname "$SCRIPT_DIR/grafana-dashboard.json")"
+        fi
+    fi
+
+    echo ""
     gum confirm "Return to main menu?" && main_menu
 }
 
@@ -511,6 +937,7 @@ main() {
     check_gum
     clear
     show_banner
+    show_backup_warning
 
     # Show detected system
     local system=$(detect_system)

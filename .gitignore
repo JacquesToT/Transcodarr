@@ -4,6 +4,9 @@ ssh/id_rsa.pub
 ssh/*.pem
 *.key
 
+# Generated output folder (contains SSH keys and user-specific config)
+output/
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -26,3 +29,4 @@ logs/
 node_modules/
 dist/
 build/
+*.code-workspace
