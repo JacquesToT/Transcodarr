@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Transcodarr Installer
-# Distributed Live Transcoding for Jellyfin using Mac Mini's with Apple Silicon
+# Distributed Live Transcoding for Jellyfin using Apple Silicon Macs
 #
 # Requirements: gum (brew install gum)
 #
@@ -44,7 +44,7 @@ show_banner() {
         "🎬 TRANSCODARR v${VERSION}" \
         "" \
         "Distributed Live Transcoding for Jellyfin" \
-        "Using Mac Mini's with Apple Silicon VideoToolbox"
+        "Using Apple Silicon Macs with VideoToolbox"
 }
 
 # Detect system type
@@ -111,7 +111,7 @@ main_menu() {
         --header "What would you like to do?" \
         --cursor.foreground 212 \
         --selected.foreground 212 \
-        "🖥️  Setup This Mac as Transcode Node" \
+        "🖥️  Setup Apple Silicon Mac as Transcode Node" \
         "🐳 Setup Jellyfin with rffmpeg (Docker)" \
         "🔧 Configure Existing Installation" \
         "📊 Setup Monitoring (Prometheus/Grafana)" \
@@ -120,8 +120,8 @@ main_menu() {
         "❌ Exit")
 
     case "$choice" in
-        "🖥️  Setup This Mac as Transcode Node")
-            setup_mac_mini
+        "🖥️  Setup Apple Silicon Mac as Transcode Node")
+            setup_apple_silicon
             ;;
         "🐳 Setup Jellyfin with rffmpeg (Docker)")
             setup_jellyfin
@@ -155,20 +155,28 @@ uninstall_transcodarr() {
     main_menu
 }
 
-# Mac Mini Setup
-setup_mac_mini() {
+# Apple Silicon Mac Setup
+setup_apple_silicon() {
     gum style \
         --foreground 39 \
         --border-foreground 39 \
         --border normal \
         --padding "0 1" \
-        "🖥️ Mac Mini Setup"
+        "🖥️ Apple Silicon Mac Setup"
 
     local system=$(detect_system)
-    if [[ "$system" != "mac_apple_silicon" && "$system" != "mac_intel" ]]; then
-        gum style --foreground 196 "⚠️  This must be run on a Mac!"
-        gum confirm "Return to main menu?" && main_menu
-        return
+    if [[ "$system" != "mac_apple_silicon" ]]; then
+        if [[ "$system" == "mac_intel" ]]; then
+            gum style --foreground 196 "⚠️  This Mac has an Intel chip (no VideoToolbox hardware acceleration)"
+            if ! gum confirm "Continue anyway?"; then
+                main_menu
+                return
+            fi
+        else
+            gum style --foreground 196 "⚠️  This must be run on a Mac!"
+            gum confirm "Return to main menu?" && main_menu
+            return
+        fi
     fi
 
     # Show what will be installed
@@ -182,7 +190,7 @@ setup_mac_mini() {
     gum style --foreground 39 "  • node_exporter for monitoring"
     echo ""
 
-    if ! gum confirm "Continue with Mac Mini setup?"; then
+    if ! gum confirm "Continue with Apple Silicon Mac setup?"; then
         main_menu
         return
     fi
@@ -205,7 +213,7 @@ setup_mac_mini() {
     run_mac_setup "$NAS_IP" "$MEDIA_PATH" "$CACHE_PATH"
 
     echo ""
-    gum style --foreground 46 "✅ Mac Mini setup complete!"
+    gum style --foreground 46 "✅ Apple Silicon Mac setup complete!"
     echo ""
     gum confirm "Return to main menu?" && main_menu
 }
@@ -222,7 +230,7 @@ setup_jellyfin() {
     gum style --foreground 252 "This will configure:"
     echo ""
     gum style --foreground 39 "  • Docker compose for Jellyfin with rffmpeg"
-    gum style --foreground 39 "  • SSH key generation for Mac Mini access"
+    gum style --foreground 39 "  • SSH key generation for transcode node access"
     gum style --foreground 39 "  • rffmpeg.yml configuration"
     gum style --foreground 39 "  • NFS volume for transcode cache"
     echo ""
@@ -236,8 +244,8 @@ setup_jellyfin() {
     echo ""
     gum style --foreground 212 "📝 Configuration"
 
-    MAC_IP=$(gum input --placeholder "192.168.1.50" --prompt "Mac Mini IP address: " --value "192.168.175.42")
-    MAC_USER=$(gum input --placeholder "username" --prompt "Mac Mini username: ")
+    MAC_IP=$(gum input --placeholder "192.168.1.50" --prompt "Transcode node IP: " --value "192.168.175.42")
+    MAC_USER=$(gum input --placeholder "username" --prompt "Transcode node SSH user: ")
     JELLYFIN_PATH=$(gum input --placeholder "/volume2/docker/jellyfin" --prompt "Jellyfin config path: " --value "/volume2/docker/jellyfin")
 
     echo ""
@@ -260,14 +268,14 @@ configure_existing() {
     choice=$(gum choose \
         --header "What would you like to configure?" \
         --cursor.foreground 212 \
-        "🔑 Add new Mac Mini node" \
+        "🔑 Add new transcode node" \
         "📋 View rffmpeg status" \
         "🔄 Reset rffmpeg state" \
         "⬅️  Back to main menu")
 
     case "$choice" in
-        "🔑 Add new Mac Mini node")
-            add_mac_node
+        "🔑 Add new transcode node")
+            add_transcode_node
             ;;
         "📋 View rffmpeg status")
             view_rffmpeg_status
@@ -281,12 +289,12 @@ configure_existing() {
     esac
 }
 
-# Add new Mac Mini node
-add_mac_node() {
-    gum style --foreground 212 "🔑 Add New Mac Mini Node"
+# Add new transcode node
+add_transcode_node() {
+    gum style --foreground 212 "🔑 Add New Transcode Node"
 
-    MAC_IP=$(gum input --placeholder "192.168.1.50" --prompt "Mac Mini IP address: ")
-    MAC_USER=$(gum input --placeholder "username" --prompt "Mac Mini username: ")
+    MAC_IP=$(gum input --placeholder "192.168.1.50" --prompt "Node IP address: ")
+    MAC_USER=$(gum input --placeholder "username" --prompt "SSH username: ")
     WEIGHT=$(gum input --placeholder "2" --prompt "Node weight (1-10): " --value "2")
 
     echo ""
@@ -338,7 +346,7 @@ setup_monitoring() {
     echo ""
     gum style --foreground 39 "  • Prometheus configuration"
     gum style --foreground 39 "  • Grafana dashboard import"
-    gum style --foreground 39 "  • node_exporter on Mac Mini"
+    gum style --foreground 39 "  • node_exporter on transcode nodes"
     echo ""
 
     gum style --foreground 252 "Grafana dashboard JSON is available at:"
@@ -355,7 +363,7 @@ view_docs() {
         --header "Which documentation?" \
         --cursor.foreground 212 \
         "📖 Full Setup Guide" \
-        "🖥️  Mac Mini Quick Start" \
+        "🖥️  Apple Silicon Mac Quick Start" \
         "🐳 Jellyfin Quick Start" \
         "⬅️  Back to main menu")
 
@@ -364,7 +372,7 @@ view_docs() {
             gum pager < "$SCRIPT_DIR/LIVE_TRANSCODING_GUIDE.md"
             view_docs
             ;;
-        "🖥️  Mac Mini Quick Start")
+        "🖥️  Apple Silicon Mac Quick Start")
             if [[ -f "$SCRIPT_DIR/docs/MAC_SETUP.md" ]]; then
                 gum pager < "$SCRIPT_DIR/docs/MAC_SETUP.md"
             else
