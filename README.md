@@ -237,8 +237,45 @@ Contributions are welcome! Please open an issue or submit a pull request.
 
 MIT License - see [LICENSE](LICENSE) for details.
 
+## Tested Setup
+
+This project has been tested with:
+
+| Component | Model |
+|-----------|-------|
+| **NAS** | Synology DS1821+ |
+| **Transcode Nodes** | M1 Mac Mini, M4 Mac Mini, M4 Mac Studio |
+
+I can only test with the hardware I have available. If you encounter issues with other setups, please [open an issue](https://github.com/JacquesToT/Transcodarr/issues).
+
+## Good to Know
+
+### Triggering Transcoding in Jellyfin
+
+Transcoding only happens when needed. Here's how to force it:
+
+**Option 1: Set a bitrate limit per user** *(admin setting)*
+1. Go to **Dashboard → Users → [User] → Playback**
+2. Set a **Maximum bitrate** (e.g., 8 Mbps)
+3. Any video above this bitrate will automatically transcode
+
+**Option 2: User changes quality during playback** *(user setting)*
+1. While watching, click the **settings/gear icon** in the player
+2. Select a **lower quality** (e.g., "1080p 8Mbps" instead of "Original")
+3. The stream will transcode to that quality
+
+> **Note:** When switching from direct play (original quality) to a transcoded stream, playback will pause briefly while the transcoded stream starts. This is normal behavior.
+
+### Server-wide Limits
+
+You can also set global bitrate limits:
+- **Dashboard → Playback → Streaming → Internet streaming bitrate limit**
+
+This is useful for remote users on slower connections.
+
 ## Acknowledgments
 
 - [rffmpeg](https://github.com/joshuaboniface/rffmpeg) - Remote FFmpeg wrapper
 - [Gum](https://github.com/charmbracelet/gum) - Terminal UI toolkit
 - [LinuxServer.io](https://linuxserver.io) - Jellyfin Docker image with rffmpeg mod
+- This project was 99% built with [Claude Code](https://claude.com/claude-code)
