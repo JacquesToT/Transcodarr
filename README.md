@@ -10,7 +10,7 @@ Offload live video transcoding from your NAS/server to Apple Silicon Macs with h
 >
 > | Component | What to backup |
 > |-----------|----------------|
-> | **Jellyfin** | Your entire Jellyfin config folder (e.g., `/volume2/docker/jellyfin`) |
+> | **Jellyfin** | Your entire Jellyfin config folder (e.g., `/volume1/docker/jellyfin`) |
 > | **Docker** | Your `docker-compose.yml` and any custom configurations |
 > | **Mac** | Note your current energy settings (`pmset -g`) |
 >
@@ -82,7 +82,7 @@ You'll need:
   - Mac IP address (System Settings → Network)
   - NAS/Server IP address (DSM → Control Panel → Network)
   - Media folder path (e.g., `/volume1/data/media`)
-  - Jellyfin config path (e.g., `/volume2/docker/jellyfin`)
+  - Jellyfin config path (e.g., `/volume1/docker/jellyfin`)
 
 ### 2. Install Gum (required for installer UI)
 

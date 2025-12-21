@@ -110,10 +110,10 @@ Copy the generated files to your server:
 
 ```bash
 # Create folder on server (run via SSH on server):
-ssh YOUR_USER@YOUR_SERVER_IP "mkdir -p /volume2/docker/jellyfin/rffmpeg/.ssh"
+ssh YOUR_USER@YOUR_SERVER_IP "mkdir -p /volume1/docker/jellyfin/rffmpeg/.ssh"
 
 # Copy files (run on Mac):
-scp -r output/rffmpeg/* YOUR_USER@YOUR_SERVER_IP:/volume2/docker/jellyfin/rffmpeg/
+scp -r output/rffmpeg/* YOUR_USER@YOUR_SERVER_IP:/volume1/docker/jellyfin/rffmpeg/
 ```
 
 ---

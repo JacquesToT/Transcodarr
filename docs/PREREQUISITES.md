@@ -10,7 +10,7 @@ Before running the Transcodarr installer, you need to prepare a few things on yo
 | Mac IP address | `192.168.1.50` | Mac: System Settings → Network → Wi-Fi/Ethernet → Details |
 | Mac username | `John Smith` | Mac: System Settings → Users & Groups (your login name) |
 | NAS media path | `/volume1/data/media` | Where your movies/TV shows are stored |
-| NAS cache path | `/volume2/docker/jellyfin/cache` | Where Jellyfin stores transcoded files |
+| NAS cache path | `/volume1/docker/jellyfin/cache` | Where Jellyfin stores transcoded files |
 
 ---
 
@@ -56,12 +56,12 @@ The Mac needs to access your media files via NFS.
 To check your actual path, SSH into your Synology:
 ```bash
 ls -la /volume1/
-ls -la /volume2/
+ls -la /volume1/
 ```
 
 **Cache Path:**
 ```
-/volume2/docker/jellyfin/cache    ← If Jellyfin config is on volume2
+/volume1/docker/jellyfin/cache    ← If Jellyfin config is on volume1
 /volume1/docker/jellyfin/cache    ← If Jellyfin config is on volume1
 ```
 

@@ -496,8 +496,8 @@ setup_apple_silicon() {
     gum style --foreground 252 "Both Mac and Jellyfin need access to the SAME folder (via NFS)."
     echo ""
     gum style --foreground 252 "Enter the NFS export path for the transcode cache on the NAS:"
-    gum style --foreground 245 "(This is usually inside your Jellyfin config folder, e.g., /volume2/docker/jellyfin/cache)"
-    CACHE_PATH=$(gum input --placeholder "/volume2/docker/jellyfin/cache" --prompt "Cache path: " --value "/volume2/docker/jellyfin/cache")
+    gum style --foreground 245 "(This is usually inside your Jellyfin config folder, e.g., /volume1/docker/jellyfin/cache)"
+    CACHE_PATH=$(gum input --placeholder "/volume1/docker/jellyfin/cache" --prompt "Cache path: " --value "/volume1/docker/jellyfin/cache")
 
     echo ""
     gum style --foreground 212 "🔍 Running pre-flight checks..."
@@ -657,13 +657,13 @@ setup_jellyfin() {
     echo ""
     gum style --foreground 252 "Where is (or will be) your Jellyfin cache folder on the NAS?"
     gum style --foreground 245 "(Usually inside your Jellyfin config folder)"
-    CACHE_PATH=$(gum input --placeholder "/volume2/docker/jellyfin/cache" --prompt "Cache path: " --value "/volume2/docker/jellyfin/cache")
+    CACHE_PATH=$(gum input --placeholder "/volume1/docker/jellyfin/cache" --prompt "Cache path: " --value "/volume1/docker/jellyfin/cache")
 
     echo ""
     gum style --foreground 226 "4/5 - Jellyfin config path"
     gum style --foreground 252 "Where is your Jellyfin config folder on the Synology?"
     gum style --foreground 245 "(This is where Jellyfin stores its database, settings, etc.)"
-    JELLYFIN_CONFIG=$(gum input --placeholder "/volume2/docker/jellyfin" --prompt "Jellyfin config path: " --value "/volume2/docker/jellyfin")
+    JELLYFIN_CONFIG=$(gum input --placeholder "/volume1/docker/jellyfin" --prompt "Jellyfin config path: " --value "/volume1/docker/jellyfin")
 
     # Confirmation loop - let user review and change values
     while true; do
@@ -853,7 +853,7 @@ show_monitoring_full_setup() {
     echo ""
 
     gum style --foreground 226 "Create this file on your server:"
-    gum style --foreground 245 "  /volume2/docker/monitoring/docker-compose.yml"
+    gum style --foreground 245 "  /volume1/docker/monitoring/docker-compose.yml"
     echo ""
 
     gum style --foreground 39 --border normal --padding "1 1" "version: '3'
@@ -883,7 +883,7 @@ volumes:
 
     echo ""
     gum style --foreground 226 "Create this file next to it:"
-    gum style --foreground 245 "  /volume2/docker/monitoring/prometheus.yml"
+    gum style --foreground 245 "  /volume1/docker/monitoring/prometheus.yml"
     echo ""
 
     gum style --foreground 39 --border normal --padding "1 1" "global:
@@ -907,7 +907,7 @@ scrape_configs:
 
     echo ""
     gum style --foreground 226 "Then start it:"
-    gum style --foreground 39 --border normal --padding "0 1" "cd /volume2/docker/monitoring && sudo docker compose up -d"
+    gum style --foreground 39 --border normal --padding "0 1" "cd /volume1/docker/monitoring && sudo docker compose up -d"
     echo ""
 
     if ! gum confirm "Continue to Step 3?"; then

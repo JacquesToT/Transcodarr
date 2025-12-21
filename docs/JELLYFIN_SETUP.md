@@ -12,10 +12,10 @@ Complete guide for setting up Jellyfin with rffmpeg for distributed transcoding.
 
 ```bash
 # Create Jellyfin config directory
-sudo mkdir -p /volume2/docker/jellyfin
-sudo mkdir -p /volume2/docker/jellyfin/rffmpeg
-sudo mkdir -p /volume2/docker/jellyfin/rffmpeg/.ssh
-sudo mkdir -p /volume2/docker/jellyfin/cache
+sudo mkdir -p /volume1/docker/jellyfin
+sudo mkdir -p /volume1/docker/jellyfin/rffmpeg
+sudo mkdir -p /volume1/docker/jellyfin/rffmpeg/.ssh
+sudo mkdir -p /volume1/docker/jellyfin/cache
 ```
 
 ## Step 2: Generate SSH Key
@@ -23,20 +23,20 @@ sudo mkdir -p /volume2/docker/jellyfin/cache
 Generate an SSH key pair for rffmpeg to connect to Mac:
 
 ```bash
-ssh-keygen -t ed25519 -f /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa -N "" -C "transcodarr"
-chmod 600 /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa
+ssh-keygen -t ed25519 -f /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa -N "" -C "transcodarr"
+chmod 600 /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa
 ```
 
 Copy the public key to your Mac:
 
 ```bash
-cat /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
+cat /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
 # Add this to ~/.ssh/authorized_keys on the Mac
 ```
 
 ## Step 3: Create rffmpeg Configuration
 
-Create `/volume2/docker/jellyfin/rffmpeg/rffmpeg.yml`:
+Create `/volume1/docker/jellyfin/rffmpeg/rffmpeg.yml`:
 
 ```yaml
 rffmpeg:
@@ -89,9 +89,9 @@ services:
       - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg
       - FFMPEG_PATH=/usr/local/bin/ffmpeg
     volumes:
-      - /volume2/docker/jellyfin:/config
+      - /volume1/docker/jellyfin:/config
       - /volume1/data/media:/data/media
-      - /volume2/docker/jellyfin/cache:/config/cache
+      - /volume1/docker/jellyfin/cache:/config/cache
     ports:
       - 8096:8096/tcp
       - 8920:8920/tcp
@@ -142,7 +142,7 @@ In Jellyfin Dashboard → Playback → Transcoding:
 
 ## Jellyfin Encoding Settings (encoding.xml)
 
-Location: `/volume2/docker/jellyfin/encoding.xml`
+Location: `/volume1/docker/jellyfin/encoding.xml`
 
 Key settings:
 
@@ -172,14 +172,14 @@ docker exec jellyfin rffmpeg add 192.168.1.50 --weight 2
 
 ```bash
 # Check key permissions
-ls -la /volume2/docker/jellyfin/rffmpeg/.ssh/
+ls -la /volume1/docker/jellyfin/rffmpeg/.ssh/
 
 # Should be:
 # -rw------- id_rsa
 # -rw-r--r-- id_rsa.pub
 
 # Fix ownership
-sudo chown -R 1000:1000 /volume2/docker/jellyfin/rffmpeg/.ssh/
+sudo chown -R 1000:1000 /volume1/docker/jellyfin/rffmpeg/.ssh/
 ```
 
 ### Video playback fails

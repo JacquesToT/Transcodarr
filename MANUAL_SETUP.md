@@ -148,14 +148,14 @@ On your server, create an SSH key pair that Jellyfin will use to connect to your
 
 ```bash
 # Create directory
-mkdir -p /volume2/docker/jellyfin/rffmpeg/.ssh
+mkdir -p /volume1/docker/jellyfin/rffmpeg/.ssh
 
 # Generate key (no passphrase)
-ssh-keygen -t ed25519 -f /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa -N "" -C "transcodarr"
+ssh-keygen -t ed25519 -f /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa -N "" -C "transcodarr"
 
 # Set permissions
-chmod 600 /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa
-chmod 644 /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
+chmod 600 /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa
+chmod 644 /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
 ```
 
 ## Step 2: Copy SSH Key to Mac
@@ -164,7 +164,7 @@ Copy the public key to your Mac:
 
 ```bash
 # Show the public key
-cat /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
+cat /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
 ```
 
 On your Mac, add it to authorized_keys:
@@ -177,7 +177,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 ## Step 3: Create rffmpeg.yml
 
-Create `/volume2/docker/jellyfin/rffmpeg/rffmpeg.yml`:
+Create `/volume1/docker/jellyfin/rffmpeg/rffmpeg.yml`:
 
 ```yaml
 # rffmpeg Configuration for Transcodarr
@@ -234,7 +234,7 @@ services:
       - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg
       - FFMPEG_PATH=/usr/local/bin/ffmpeg
     volumes:
-      - /volume2/docker/jellyfin:/config
+      - /volume1/docker/jellyfin:/config
       - /volume1/data/media:/data/media
     ports:
       - 8096:8096
@@ -297,7 +297,7 @@ brew services start node_exporter
 
 ## On your server:
 
-Create `/volume2/docker/monitoring/docker-compose.yml`:
+Create `/volume1/docker/monitoring/docker-compose.yml`:
 
 ```yaml
 services:
@@ -325,7 +325,7 @@ volumes:
   grafana_data:
 ```
 
-Create `/volume2/docker/monitoring/prometheus.yml`:
+Create `/volume1/docker/monitoring/prometheus.yml`:
 
 ```yaml
 global:
@@ -346,7 +346,7 @@ scrape_configs:
 Start monitoring:
 
 ```bash
-cd /volume2/docker/monitoring
+cd /volume1/docker/monitoring
 docker compose up -d
 ```
 

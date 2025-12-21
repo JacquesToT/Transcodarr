@@ -10,7 +10,7 @@
 >
 > | Component | Wat backuppen |
 > |-----------|---------------|
-> | **Jellyfin** | Je volledige Jellyfin config folder (bijv. `/volume2/docker/jellyfin`) |
+> | **Jellyfin** | Je volledige Jellyfin config folder (bijv. `/volume1/docker/jellyfin`) |
 > | **Docker** | Je `docker-compose.yml` en eventuele custom configuraties |
 > | **Mac** | Noteer je huidige energy settings (`pmset -g`) |
 > | **NFS** | Synology NFS export instellingen (screenshot of export) |
@@ -91,7 +91,7 @@
 │    │                                                                   │     │
 │    │    Transcoding      ┌─────────────────────────────────────┐      │     │
 │    │    Request          │  LOKALE CACHE (stabiel!)            │      │     │
-│    │        │            │  /volume2/docker/jellyfin/cache     │      │     │
+│    │        │            │  /volume1/docker/jellyfin/cache     │      │     │
 │    │        ▼            │  └─► bind mount: /config/cache      │      │     │
 │    │  ┌──────────┐       └─────────────────────────────────────┘      │     │
 │    │  │ rffmpeg  │───SSH──────────────────────────────────────────┐   │     │
@@ -101,7 +101,7 @@
 │                                                                   │          │
 │    NFS EXPORTS (Synology = Server):                              │          │
 │    ├─► /volume1/data/media     (films, series)                   │          │
-│    └─► /volume2/docker         (incl. jellyfin cache)            │          │
+│    └─► /volume1/docker         (incl. jellyfin cache)            │          │
 │                                                                   │          │
 │    ════════════════════════════════════════════════════════════════          │
 │                              │                                    │          │
@@ -112,7 +112,7 @@
 │    │                                                                  │      │
 │    │   NFS Mounts (Mac = Client):                                    │      │
 │    │   ├─► /data/media ──────────► YOUR_NAS_IP:/volume1/data/media│     │
-│    │   └─► /config/cache ────────► YOUR_NAS_IP:/volume2/docker/   │      │
+│    │   └─► /config/cache ────────► YOUR_NAS_IP:/volume1/docker/   │      │
 │    │                                jellyfin/cache (symlink)          │      │
 │    │                                                                  │      │
 │    │   ┌────────────────┐    ┌─────────────────┐                     │      │
@@ -323,7 +323,7 @@ services:
       - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg
       - FFMPEG_PATH=/usr/local/bin/ffmpeg
     volumes:
-      - /volume2/docker/jellyfin:/config
+      - /volume1/docker/jellyfin:/config
       - /volume1/data/media:/data/media
       # Mac Mini SSD cache via NFS voor snelle transcoding
       - macmini-cache:/config/cache
@@ -363,7 +363,7 @@ docker volume create \
 # - retrans=3: probeer 3× voordat je opgeeft
 ```
 
-**rffmpeg.yml:** `/volume2/docker/jellyfin/rffmpeg/rffmpeg.yml`
+**rffmpeg.yml:** `/volume1/docker/jellyfin/rffmpeg/rffmpeg.yml`
 ```yaml
 rffmpeg:
     logging:
@@ -425,14 +425,14 @@ De originele setup (Mac Mini als NFS server → Synology) was instabiel. De nieu
 ```
 Mac Mini (FFmpeg)
       │
-      │ NFS mount: YOUR_NAS_IP:/volume2/docker/jellyfin/cache
+      │ NFS mount: YOUR_NAS_IP:/volume1/docker/jellyfin/cache
       │            → /Users/Shared/jellyfin-cache
       ▼
       │ Symlink: /config/cache → /Users/Shared/jellyfin-cache
       │
       ▼ Schrijft transcode output
       │
-Synology (/volume2/docker/jellyfin/cache)
+Synology (/volume1/docker/jellyfin/cache)
       │
       │ Bind mount in container
       ▼
@@ -441,16 +441,16 @@ Jellyfin Container (/config/cache) ← Leest transcode output
 
 **Setup op Synology:**
 
-Synology exporteert al `/volume2/docker` via NFS (standaard DSM config).
+Synology exporteert al `/volume1/docker` via NFS (standaard DSM config).
 Jellyfin gebruikt een lokale bind mount:
 
 ```bash
 # Jellyfin container met lokale cache
 docker run -d \
   --name jellyfin \
-  -v /volume2/docker/jellyfin:/config \
+  -v /volume1/docker/jellyfin:/config \
   -v /volume1/data/media:/data/media \
-  -v /volume2/docker/jellyfin/cache:/config/cache \
+  -v /volume1/docker/jellyfin/cache:/config/cache \
   linuxserver/jellyfin:latest
 ```
 
@@ -460,7 +460,7 @@ docker run -d \
    ```bash
    #!/bin/bash
    MOUNT_POINT="/Users/Shared/jellyfin-cache"
-   NFS_SHARE="YOUR_NAS_IP:/volume2/docker/jellyfin/cache"
+   NFS_SHARE="YOUR_NAS_IP:/volume1/docker/jellyfin/cache"
    LOG_FILE="/var/log/mount-synology-cache.log"
 
    log() { echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"; }
@@ -502,7 +502,7 @@ docker run -d \
 ```bash
 # Op Mac Mini - check mount
 mount | grep jellyfin-cache
-# Moet tonen: YOUR_NAS_IP:/volume2/docker/jellyfin/cache on /Users/Shared/jellyfin-cache
+# Moet tonen: YOUR_NAS_IP:/volume1/docker/jellyfin/cache on /Users/Shared/jellyfin-cache
 
 # Test schrijven
 echo "test" > /Users/Shared/jellyfin-cache/transcodes/test.txt
@@ -519,7 +519,7 @@ docker exec jellyfin ls -la /config/cache/transcodes/
 ### Locaties op Synology
 
 ```
-/volume2/docker/jellyfin/
+/volume1/docker/jellyfin/
 ├── rffmpeg/
 │   ├── rffmpeg.yml           # Hoofdconfiguratie
 │   ├── rffmpeg.db            # SQLite database (hosts, processen)
@@ -531,7 +531,7 @@ docker exec jellyfin ls -la /config/cache/transcodes/
 └── cache/                    # Gemount van Mac Mini via NFS (macmini-cache volume)
     └── transcodes/           # Actieve transcode bestanden
 
-/volume2/docker/projects/jellyfin-compose/
+/volume1/docker/projects/jellyfin-compose/
 └── compose.yaml              # Docker compose config (zie ook dit bestand)
 
 # Docker volume (NFS naar Mac Mini)
@@ -714,7 +714,7 @@ docker exec jellyfin rffmpeg add YOUR_MAC_IP --weight 2
 | Component | Log Path |
 |-----------|----------|
 | rffmpeg | `/config/log/rffmpeg.log` (in Jellyfin container) |
-| Jellyfin | `/volume2/docker/jellyfin/log/` |
+| Jellyfin | `/volume1/docker/jellyfin/log/` |
 | NFS Mount (Mac) | `/var/log/mount-nfs-media.log` |
 | Prometheus | Docker logs voor prometheus container |
 
@@ -778,7 +778,7 @@ sudo docker run -d \
   -e UMASK=022 \
   -e DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg \
   -e FFMPEG_PATH=/usr/local/bin/ffmpeg \
-  -v /volume2/docker/jellyfin:/config \
+  -v /volume1/docker/jellyfin:/config \
   -v /volume1/data/media:/data/media \
   -v macmini-cache:/config/cache \
   linuxserver/jellyfin:latest
@@ -792,7 +792,7 @@ sudo docker run -d \
 
 ### Huidige Configuratie
 
-Bestand: `/volume2/docker/jellyfin/encoding.xml`
+Bestand: `/volume1/docker/jellyfin/encoding.xml`
 
 | Setting | Waarde | Uitleg |
 |---------|--------|--------|
@@ -958,7 +958,7 @@ sudo docker exec -u abc jellyfin rffmpeg clear
 mount | grep -E '/data/media|jellyfin-cache'
 # Verwacht:
 # YOUR_NAS_IP:/volume1/data/media on /data/media
-# YOUR_NAS_IP:/volume2/docker/jellyfin/cache on /Users/Shared/jellyfin-cache
+# YOUR_NAS_IP:/volume1/docker/jellyfin/cache on /Users/Shared/jellyfin-cache
 
 # Restart media mount
 sudo /usr/local/bin/mount-nfs-media.sh

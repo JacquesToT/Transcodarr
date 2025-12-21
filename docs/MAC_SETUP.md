@@ -136,7 +136,7 @@ Create `/usr/local/bin/mount-synology-cache.sh`:
 sudo tee /usr/local/bin/mount-synology-cache.sh << 'EOF'
 #!/bin/bash
 MOUNT_POINT="/Users/Shared/jellyfin-cache"
-NFS_SHARE="YOUR_NAS_IP:/volume2/docker/jellyfin/cache"
+NFS_SHARE="YOUR_NAS_IP:/volume1/docker/jellyfin/cache"
 LOG_FILE="/var/log/mount-synology-cache.log"
 
 mkdir -p "$MOUNT_POINT"
