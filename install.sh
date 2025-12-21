@@ -665,8 +665,63 @@ setup_jellyfin() {
     gum style --foreground 245 "(This is where Jellyfin stores its database, settings, etc.)"
     JELLYFIN_CONFIG=$(gum input --placeholder "/volume2/docker/jellyfin" --prompt "Jellyfin config path: " --value "/volume2/docker/jellyfin")
 
+    # Confirmation loop - let user review and change values
+    while true; do
+        echo ""
+        gum style --foreground 212 --border normal --padding "1 2" \
+            "📋 Please confirm your settings:"
+        echo ""
+        gum style --foreground 252 "1. Mac IP:           ${MAC_IP}"
+        gum style --foreground 252 "2. Mac username:     ${MAC_USER}"
+        gum style --foreground 252 "3. Synology IP:      ${NAS_IP}"
+        gum style --foreground 252 "4. Synology user:    ${NAS_USER}"
+        gum style --foreground 252 "5. Cache path:       ${CACHE_PATH}"
+        gum style --foreground 252 "6. Jellyfin config:  ${JELLYFIN_CONFIG}"
+        echo ""
+
+        local confirm_choice
+        confirm_choice=$(gum choose \
+            --header "Is this correct?" \
+            --cursor.foreground 212 \
+            "✅ Yes, generate the files" \
+            "✏️  Change a value" \
+            "❌ Cancel and return to menu")
+
+        case "$confirm_choice" in
+            "✅ Yes, generate the files")
+                break
+                ;;
+            "✏️  Change a value")
+                local change_choice
+                change_choice=$(gum choose \
+                    --header "Which value do you want to change?" \
+                    --cursor.foreground 212 \
+                    "1. Mac IP (${MAC_IP})" \
+                    "2. Mac username (${MAC_USER})" \
+                    "3. Synology IP (${NAS_IP})" \
+                    "4. Synology username (${NAS_USER})" \
+                    "5. Cache path (${CACHE_PATH})" \
+                    "6. Jellyfin config path (${JELLYFIN_CONFIG})" \
+                    "⬅️  Back")
+
+                case "$change_choice" in
+                    "1."*) MAC_IP=$(gum input --placeholder "$MAC_IP" --prompt "Mac IP: " --value "$MAC_IP") ;;
+                    "2."*) MAC_USER=$(gum input --placeholder "$MAC_USER" --prompt "Mac username: " --value "$MAC_USER") ;;
+                    "3."*) NAS_IP=$(gum input --placeholder "$NAS_IP" --prompt "Synology IP: " --value "$NAS_IP") ;;
+                    "4."*) NAS_USER=$(gum input --placeholder "$NAS_USER" --prompt "Synology username: " --value "$NAS_USER") ;;
+                    "5."*) CACHE_PATH=$(gum input --placeholder "$CACHE_PATH" --prompt "Cache path: " --value "$CACHE_PATH") ;;
+                    "6."*) JELLYFIN_CONFIG=$(gum input --placeholder "$JELLYFIN_CONFIG" --prompt "Jellyfin config: " --value "$JELLYFIN_CONFIG") ;;
+                esac
+                ;;
+            "❌ Cancel and return to menu")
+                main_menu
+                return
+                ;;
+        esac
+    done
+
     echo ""
-    gum style --foreground 226 "5/5 - Generating files..."
+    gum style --foreground 226 "Generating files..."
     echo ""
 
     source "$SCRIPT_DIR/lib/jellyfin-setup.sh"
