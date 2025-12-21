@@ -148,14 +148,14 @@ On your server, create an SSH key pair that Jellyfin will use to connect to your
 
 ```bash
 # Create directory
-mkdir -p /volume1/docker/jellyfin/rffmpeg/.ssh
+sudo mkdir -p /volume1/docker/jellyfin/rffmpeg/.ssh
 
 # Generate key (no passphrase)
-ssh-keygen -t ed25519 -f /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa -N "" -C "transcodarr"
+sudo ssh-keygen -t ed25519 -f /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa -N "" -C "transcodarr"
 
 # Set permissions
-chmod 600 /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa
-chmod 644 /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
+sudo chmod 600 /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa
+sudo chmod 644 /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
 ```
 
 ## Step 2: Copy SSH Key to Mac

@@ -357,8 +357,8 @@ Copy the generated files to your Synology. You can use Finder, SCP, or the Synol
 ### Using SCP (copy from your current computer to Synology):
 
 \`\`\`bash
-# First, create the folders on Synology (run this ON Synology via SSH):
-ssh ${nas_user}@${nas_ip} "mkdir -p ${jellyfin_config}/rffmpeg/.ssh"
+# First, create the folders on Synology:
+ssh ${nas_user}@${nas_ip} "sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh"
 
 # Then copy the files (run this on your LOCAL computer):
 scp -r output/rffmpeg/* ${nas_user}@${nas_ip}:${jellyfin_config}/rffmpeg/
@@ -369,8 +369,8 @@ scp -r output/rffmpeg/* ${nas_user}@${nas_ip}:${jellyfin_config}/rffmpeg/
 ### Set correct permissions (run ON Synology):
 
 \`\`\`bash
-chmod 600 ${jellyfin_config}/rffmpeg/.ssh/id_rsa
-chmod 644 ${jellyfin_config}/rffmpeg/.ssh/id_rsa.pub
+sudo chmod 600 ${jellyfin_config}/rffmpeg/.ssh/id_rsa
+sudo chmod 644 ${jellyfin_config}/rffmpeg/.ssh/id_rsa.pub
 \`\`\`
 
 ---
@@ -552,7 +552,7 @@ show_summary() {
     gum style --foreground 252 "Run these commands ONE BY ONE:"
     echo ""
     gum style --foreground 245 "First, SSH into your Synology and create the folders:"
-    gum style --foreground 39 "ssh ${nas_user}@${nas_ip} \"mkdir -p ${jellyfin_config}/rffmpeg/.ssh ${cache_path}\""
+    gum style --foreground 39 "ssh ${nas_user}@${nas_ip} \"sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh ${cache_path}\""
     echo ""
     gum style --foreground 245 "Then, copy the files from this Mac to Synology:"
     gum style --foreground 39 "scp -r ${OUTPUT_DIR}/rffmpeg/* ${nas_user}@${nas_ip}:${jellyfin_config}/rffmpeg/"
