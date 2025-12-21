@@ -90,6 +90,7 @@ create_docker_compose() {
     local mac_ip="$1"
     local nas_ip="$2"
     local cache_path="${3:-/volume2/docker/jellyfin/cache}"
+    local jellyfin_config="${4:-/volume2/docker/jellyfin}"
     local compose_file="${OUTPUT_DIR}/docker-compose.yml"
     local changes_file="${OUTPUT_DIR}/EXISTING_JELLYFIN_CHANGES.md"
 
@@ -113,7 +114,7 @@ services:
       - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg
       - FFMPEG_PATH=/usr/local/bin/ffmpeg
     volumes:
-      - /volume2/docker/jellyfin:/config           # ← Jellyfin config folder
+      - ${jellyfin_config}:/config                 # ← Jellyfin config folder
       - /volume1/data/media:/data/media            # ← Your media folder
       - ${cache_path}:/config/cache                # ← Transcode cache
     ports:
@@ -290,6 +291,9 @@ create_readme() {
     local mac_ip="$1"
     local mac_user="$2"
     local nas_ip="$3"
+    local nas_user="${4:-admin}"
+    local cache_path="${5:-/volume2/docker/jellyfin/cache}"
+    local jellyfin_config="${6:-/volume2/docker/jellyfin}"
     local readme_file="${OUTPUT_DIR}/SETUP_INSTRUCTIONS.md"
     local public_key=""
 
@@ -345,26 +349,28 @@ Copy the generated files to your Synology. You can use Finder, SCP, or the Synol
 
 | Local file | Copy to on Synology |
 |------------|---------------------|
-| \`output/rffmpeg/rffmpeg.yml\` | \`/volume2/docker/jellyfin/rffmpeg/rffmpeg.yml\` |
-| \`output/rffmpeg/.ssh/id_rsa\` | \`/volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa\` |
-| \`output/rffmpeg/.ssh/id_rsa.pub\` | \`/volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub\` |
+| \`output/rffmpeg/rffmpeg.yml\` | \`${jellyfin_config}/rffmpeg/rffmpeg.yml\` |
+| \`output/rffmpeg/.ssh/id_rsa\` | \`${jellyfin_config}/rffmpeg/.ssh/id_rsa\` |
+| \`output/rffmpeg/.ssh/id_rsa.pub\` | \`${jellyfin_config}/rffmpeg/.ssh/id_rsa.pub\` |
 | \`output/docker-compose.yml\` | Your Jellyfin compose folder |
 
 ### Using SCP (copy from your current computer to Synology):
 
 \`\`\`bash
 # First, create the folders on Synology (run this ON Synology via SSH):
-ssh YOUR_USER@${nas_ip} "mkdir -p /volume2/docker/jellyfin/rffmpeg/.ssh"
+ssh ${nas_user}@${nas_ip} "mkdir -p ${jellyfin_config}/rffmpeg/.ssh"
 
 # Then copy the files (run this on your LOCAL computer):
-scp -r output/rffmpeg/* YOUR_USER@${nas_ip}:/volume2/docker/jellyfin/rffmpeg/
+scp -r output/rffmpeg/* ${nas_user}@${nas_ip}:${jellyfin_config}/rffmpeg/
 \`\`\`
+
+💡 **TIP:** If you see "Are you sure you want to continue connecting?" type \`yes\` and press Enter.
 
 ### Set correct permissions (run ON Synology):
 
 \`\`\`bash
-chmod 600 /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa
-chmod 644 /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
+chmod 600 ${jellyfin_config}/rffmpeg/.ssh/id_rsa
+chmod 644 ${jellyfin_config}/rffmpeg/.ssh/id_rsa.pub
 \`\`\`
 
 ---
@@ -416,7 +422,7 @@ If this shows FFmpeg version info, everything works!
 ### "Permission denied" error
 - Check that Remote Login is enabled on Mac
 - Check that the SSH key is in ~/.ssh/authorized_keys on Mac
-- Check file permissions on Synology: \`chmod 600 /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa\`
+- Check file permissions on Synology: \`chmod 600 ${jellyfin_config}/rffmpeg/.ssh/id_rsa\`
 
 ### "Host marked as bad" in rffmpeg status
 - Clear the state: \`docker exec -u abc jellyfin rffmpeg clear\`
@@ -499,6 +505,8 @@ show_summary() {
     local mac_ip="$1"
     local mac_user="$2"
     local nas_ip="$3"
+    local nas_user="$4"
+    local jellyfin_config="$5"
     local public_key=""
 
     if [[ -f "${OUTPUT_DIR}/rffmpeg/.ssh/id_rsa.pub" ]]; then
@@ -543,10 +551,10 @@ show_summary() {
     gum style --foreground 252 "Run these commands ONE BY ONE:"
     echo ""
     gum style --foreground 245 "First, SSH into your Synology and create the folder:"
-    gum style --foreground 39 "ssh YOUR_USER@${nas_ip} \"mkdir -p /volume2/docker/jellyfin/rffmpeg/.ssh\""
+    gum style --foreground 39 "ssh ${nas_user}@${nas_ip} \"mkdir -p ${jellyfin_config}/rffmpeg/.ssh\""
     echo ""
     gum style --foreground 245 "Then, copy the files from this Mac to Synology:"
-    gum style --foreground 39 "scp -r ${OUTPUT_DIR}/rffmpeg/* YOUR_USER@${nas_ip}:/volume2/docker/jellyfin/rffmpeg/"
+    gum style --foreground 39 "scp -r ${OUTPUT_DIR}/rffmpeg/* ${nas_user}@${nas_ip}:${jellyfin_config}/rffmpeg/"
     echo ""
     gum style --foreground 226 "💡 TIP: If you see 'Are you sure you want to continue connecting?'"
     gum style --foreground 252 "   Type: yes (and press Enter)"
@@ -655,7 +663,9 @@ run_jellyfin_setup() {
     local mac_ip="$1"
     local mac_user="$2"
     local nas_ip="$3"
-    local cache_path="${4:-/volume2/docker/jellyfin/cache}"
+    local nas_user="${4:-admin}"
+    local cache_path="${5:-/volume2/docker/jellyfin/cache}"
+    local jellyfin_config="${6:-/volume2/docker/jellyfin}"
 
     # Create output directory
     mkdir -p "$OUTPUT_DIR"
@@ -665,9 +675,9 @@ run_jellyfin_setup() {
 
     generate_ssh_key
     create_rffmpeg_config "$mac_ip" "$mac_user"
-    create_docker_compose "$mac_ip" "$nas_ip" "$cache_path"
+    create_docker_compose "$mac_ip" "$nas_ip" "$cache_path" "$jellyfin_config"
     create_monitoring_config "$mac_ip" "$nas_ip"
-    create_readme "$mac_ip" "$mac_user" "$nas_ip" "$cache_path"
+    create_readme "$mac_ip" "$mac_user" "$nas_ip" "$nas_user" "$cache_path" "$jellyfin_config"
 
-    show_summary "$mac_ip" "$mac_user" "$nas_ip"
+    show_summary "$mac_ip" "$mac_user" "$nas_ip" "$nas_user" "$jellyfin_config"
 }
