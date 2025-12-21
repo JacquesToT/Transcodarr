@@ -89,6 +89,7 @@ EOF
 create_docker_compose() {
     local mac_ip="$1"
     local nas_ip="$2"
+    local cache_path="${3:-/volume2/docker/jellyfin/cache}"
     local compose_file="${OUTPUT_DIR}/docker-compose.yml"
     local changes_file="${OUTPUT_DIR}/EXISTING_JELLYFIN_CHANGES.md"
 
@@ -114,7 +115,7 @@ services:
     volumes:
       - /volume2/docker/jellyfin:/config           # ← Jellyfin config folder
       - /volume1/data/media:/data/media            # ← Your media folder
-      - /volume2/docker/jellyfin/cache:/config/cache  # ← Transcode cache
+      - ${cache_path}:/config/cache                # ← Transcode cache
     ports:
       - 8096:8096/tcp      # HTTP web interface
       - 8920:8920/tcp      # HTTPS (optional)
@@ -129,7 +130,7 @@ EOF
 # Already Have Jellyfin? Here's What to Change
 
 You don't need to replace your entire docker-compose.yml!
-Just add these lines to your EXISTING Jellyfin configuration.
+Just add a few lines to your EXISTING Jellyfin configuration.
 
 ---
 
@@ -152,14 +153,53 @@ environment:
 
 ---
 
-## Step 2: That's it for docker-compose!
+## Step 2: Check your cache volume (important!)
 
-You don't need to change volumes or ports.
-The rffmpeg mod will automatically use the config in \`/config/rffmpeg/\`.
+For distributed transcoding to work, your Mac writes transcoded files to a cache folder.
+Jellyfin reads from this same folder. Both need access to the SAME folder.
+
+**Check if you have a cache volume mapped:**
+
+\`\`\`yaml
+volumes:
+  - /path/to/config:/config
+  - /path/to/media:/data/media
+  # Do you have this? If not, ADD IT:
+  - ${cache_path}:/config/cache
+\`\`\`
+
+**If you already have a cache volume** (like \`/volume2/docker/jellyfin/cache:/config/cache\`), you're good!
+Just make sure the Mac can access this folder via NFS.
+
+**If you don't have a cache volume**, add one:
+\`\`\`yaml
+volumes:
+  # ... your existing volumes ...
+  - ${cache_path}:/config/cache    # ← ADD THIS
+\`\`\`
+
+Then create the folder on your NAS:
+\`\`\`bash
+mkdir -p ${cache_path}
+\`\`\`
 
 ---
 
-## Step 3: Copy the rffmpeg configuration
+## Step 3: Enable NFS access to the cache folder
+
+Your Mac needs to read/write to the cache folder via NFS.
+
+On Synology:
+1. Go to **Control Panel → File Services → NFS → Enable NFS**
+2. Go to **Control Panel → Shared Folder → [your jellyfin folder] → Edit → NFS Permissions**
+3. Add a rule:
+   - Hostname: Your Mac's IP or \`*\`
+   - Privilege: Read/Write
+   - Squash: Map all users to admin
+
+---
+
+## Step 4: Copy the rffmpeg configuration
 
 Copy the generated files to your Jellyfin config folder:
 
@@ -176,7 +216,7 @@ ssh YOUR_USER@${nas_ip} "chmod 600 /volume2/docker/jellyfin/rffmpeg/.ssh/id_rsa"
 
 ---
 
-## Step 4: Restart Jellyfin
+## Step 5: Restart Jellyfin
 
 \`\`\`bash
 docker compose down
@@ -187,7 +227,7 @@ Wait ~30 seconds for the container to fully start (it needs to install rffmpeg).
 
 ---
 
-## Step 5: Add your Mac as transcode node
+## Step 6: Add your Mac as transcode node
 
 \`\`\`bash
 docker exec jellyfin rffmpeg add ${mac_ip} --weight 2
@@ -609,6 +649,7 @@ run_jellyfin_setup() {
     local mac_ip="$1"
     local mac_user="$2"
     local nas_ip="$3"
+    local cache_path="${4:-/volume2/docker/jellyfin/cache}"
 
     # Create output directory
     mkdir -p "$OUTPUT_DIR"
@@ -618,9 +659,9 @@ run_jellyfin_setup() {
 
     generate_ssh_key
     create_rffmpeg_config "$mac_ip" "$mac_user"
-    create_docker_compose "$mac_ip" "$nas_ip"
+    create_docker_compose "$mac_ip" "$nas_ip" "$cache_path"
     create_monitoring_config "$mac_ip" "$nas_ip"
-    create_readme "$mac_ip" "$mac_user" "$nas_ip"
+    create_readme "$mac_ip" "$mac_user" "$nas_ip" "$cache_path"
 
     show_summary "$mac_ip" "$mac_user" "$nas_ip"
 }

@@ -78,10 +78,12 @@ install_ffmpeg() {
     fi
 }
 
+# Global variable to track if reboot is needed
+NEEDS_REBOOT=false
+
 # Setup synthetic links for /data and /config
 setup_synthetic_links() {
     local synthetic_conf="/etc/synthetic.conf"
-    local needs_reboot=false
 
     # Check if synthetic.conf exists and has correct entries
     if [[ -f "$synthetic_conf" ]]; then
@@ -92,7 +94,7 @@ setup_synthetic_links() {
     fi
 
     gum style --foreground 212 "Setting up synthetic links for /data and /config..."
-    gum style --foreground 226 "⚠ This requires sudo and a reboot"
+    gum style --foreground 226 "⚠ This requires sudo (reboot will be done at the end)"
 
     if gum confirm "Continue?"; then
         # Create the backing directories
@@ -105,17 +107,9 @@ setup_synthetic_links() {
             echo -e "config\tSystem/Volumes/Data/config"
         } | sudo tee "$synthetic_conf" > /dev/null
 
-        needs_reboot=true
+        NEEDS_REBOOT=true
         gum style --foreground 46 "✓ Synthetic links configured"
-        gum style --foreground 226 "⚠ A reboot is required for /data and /config to appear"
-    fi
-
-    if [[ "$needs_reboot" == true ]]; then
-        if gum confirm "Reboot now?"; then
-            sudo reboot
-        else
-            gum style --foreground 226 "Please reboot manually before continuing setup"
-        fi
+        gum style --foreground 245 "  (reboot required - will be done at the end)"
     fi
 }
 
@@ -343,16 +337,52 @@ run_mac_setup() {
     echo ""
     if [[ $errors -eq 0 ]]; then
         gum style --foreground 46 --border double --padding "1 2" \
-            "🎉 Apple Silicon Mac setup complete!" \
-            "" \
-            "Next steps:" \
-            "1. Copy SSH public key from Jellyfin server" \
-            "2. Add this Mac to rffmpeg on the server"
+            "🎉 Apple Silicon Mac setup complete!"
     else
         gum style --foreground 226 --border double --padding "1 2" \
             "⚠️  Setup completed with $errors warning(s)" \
             "" \
             "Some components may need manual configuration." \
             "Check the messages above for details."
+    fi
+
+    # Handle reboot at the end
+    if [[ "$NEEDS_REBOOT" == true ]]; then
+        echo ""
+        gum style --foreground 226 --border double --padding "1 2" \
+            "🔄 REBOOT REQUIRED"
+
+        echo ""
+        gum style --foreground 212 "A reboot is needed for the /data and /config folders to appear."
+        echo ""
+        gum style --foreground 212 "📋 AFTER YOU REBOOT, here's what to do:"
+        echo ""
+        gum style --foreground 39 "1. Run the installer again:"
+        gum style --foreground 252 "   cd ~/Transcodarr && ./install.sh"
+        echo ""
+        gum style --foreground 39 "2. Choose: 🐳 Continue to Jellyfin Setup"
+        gum style --foreground 252 "   This will generate all the config files for your server."
+        echo ""
+        gum style --foreground 39 "3. Follow the instructions to:"
+        gum style --foreground 252 "   • Add the SSH key to this Mac"
+        gum style --foreground 252 "   • Copy files to your Synology/server"
+        gum style --foreground 252 "   • Start Jellyfin and add this Mac as a node"
+        echo ""
+
+        if gum confirm "Reboot now?"; then
+            gum style --foreground 212 "Rebooting in 3 seconds..."
+            sleep 3
+            sudo reboot
+        else
+            echo ""
+            gum style --foreground 226 "⚠️  Remember to reboot before continuing!"
+            gum style --foreground 252 "Run 'sudo reboot' when ready."
+        fi
+    else
+        echo ""
+        gum style --foreground 212 "Next steps:"
+        gum style --foreground 252 "1. Continue with 'Jellyfin Setup' to generate config files"
+        gum style --foreground 252 "2. Copy SSH public key from Jellyfin server"
+        gum style --foreground 252 "3. Add this Mac to rffmpeg on the server"
     fi
 }

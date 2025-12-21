@@ -486,10 +486,17 @@ setup_apple_silicon() {
 
     echo ""
     gum style --foreground 252 "Enter the NFS export path to your media files on the NAS:"
+    gum style --foreground 245 "(Example: /volume1/data/media - this is where your movies/shows are stored)"
     MEDIA_PATH=$(gum input --placeholder "/volume1/data/media" --prompt "Media path: " --value "/volume1/data/media")
 
     echo ""
+    gum style --foreground 212 "📂 What is the transcode cache?"
+    gum style --foreground 252 "When the Mac transcodes a video, it writes the output to a 'cache' folder."
+    gum style --foreground 252 "Jellyfin then reads from this folder to stream to you."
+    gum style --foreground 252 "Both Mac and Jellyfin need access to the SAME folder (via NFS)."
+    echo ""
     gum style --foreground 252 "Enter the NFS export path for the transcode cache on the NAS:"
+    gum style --foreground 245 "(This is usually inside your Jellyfin config folder, e.g., /volume2/docker/jellyfin/cache)"
     CACHE_PATH=$(gum input --placeholder "/volume2/docker/jellyfin/cache" --prompt "Cache path: " --value "/volume2/docker/jellyfin/cache")
 
     echo ""
@@ -618,10 +625,10 @@ setup_jellyfin() {
     # Get configuration
     echo ""
     gum style --foreground 212 "📝 Configuration"
-    gum style --foreground 252 "I'll ask for 3 things, then generate all config files for you."
+    gum style --foreground 252 "I'll ask for 4 things, then generate all config files for you."
     echo ""
 
-    gum style --foreground 226 "1/3 - Mac (transcode node)"
+    gum style --foreground 226 "1/4 - Mac (transcode node)"
     gum style --foreground 252 "This is the Apple Silicon Mac that will do the transcoding."
     gum style --foreground 252 "To find the IP: System Settings → Network → look for your IP address"
     MAC_IP=$(gum input --placeholder "192.168.1.50" --prompt "Mac IP address: ")
@@ -631,18 +638,29 @@ setup_jellyfin() {
     MAC_USER=$(gum input --placeholder "nick" --prompt "Mac username: ")
 
     echo ""
-    gum style --foreground 226 "2/3 - Synology/NAS (where Jellyfin runs)"
+    gum style --foreground 226 "2/4 - Synology/NAS (where Jellyfin runs)"
     gum style --foreground 252 "This is where your Jellyfin Docker container runs."
     gum style --foreground 252 "To find the IP: Synology DSM → Control Panel → Network"
     NAS_IP=$(gum input --placeholder "192.168.1.100" --prompt "NAS IP address: ")
 
     echo ""
-    gum style --foreground 226 "3/3 - Generating files..."
+    gum style --foreground 226 "3/4 - Cache folder path"
+    gum style --foreground 212 "📂 What is the transcode cache?"
+    gum style --foreground 252 "When the Mac transcodes, it writes output to a 'cache' folder."
+    gum style --foreground 252 "Jellyfin reads from this folder to stream to you."
+    gum style --foreground 252 "Both need access to the SAME folder."
+    echo ""
+    gum style --foreground 252 "Where is (or will be) your Jellyfin cache folder on the NAS?"
+    gum style --foreground 245 "(Usually inside your Jellyfin config folder)"
+    CACHE_PATH=$(gum input --placeholder "/volume2/docker/jellyfin/cache" --prompt "Cache path: " --value "/volume2/docker/jellyfin/cache")
+
+    echo ""
+    gum style --foreground 226 "4/4 - Generating files..."
     echo ""
 
     source "$SCRIPT_DIR/lib/jellyfin-setup.sh"
 
-    run_jellyfin_setup "$MAC_IP" "$MAC_USER" "$NAS_IP"
+    run_jellyfin_setup "$MAC_IP" "$MAC_USER" "$NAS_IP" "$CACHE_PATH"
 
     echo ""
     gum style --foreground 46 "✅ Jellyfin setup complete!"

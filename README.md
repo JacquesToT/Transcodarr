@@ -108,6 +108,8 @@ The interactive installer will guide you through:
 - Jellyfin/Docker configuration (rffmpeg, SSH keys)
 - Monitoring setup (Prometheus/Grafana) — *optional*
 
+> **Note:** On first-time Mac setup, a **reboot is required** for NFS mount points to work. The installer will explain what to do after rebooting.
+
 ## Manual Setup
 
 Prefer to set things up manually? See **[MANUAL_SETUP.md](MANUAL_SETUP.md)**

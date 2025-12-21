@@ -59,6 +59,20 @@ The installer will:
 3. Configure energy settings (prevent sleep)
 4. Setup NFS mounts for media access
 
+> **⚠️ Reboot Required:** After Mac setup, a reboot is needed for NFS mount points to work.
+> The installer will show you exactly what to do after rebooting.
+
+### After Reboot
+
+Once your Mac restarts:
+
+```bash
+cd ~/Transcodarr
+./install.sh
+```
+
+Choose: **🐳 Continue to Jellyfin Setup** to generate the server config files.
+
 ---
 
 ## Step 3: Generate Server Config Files
