@@ -35,27 +35,38 @@ Offload live video transcoding from your NAS/server to Mac Mini's with hardware-
 
 ## Quick Start
 
-### 1. Install Gum (required for installer UI)
+### 1. Read the Prerequisites
+
+**Before installing**, make sure you have prepared your NAS and Mac:
+
+📋 **[Prerequisites Guide](docs/PREREQUISITES.md)** - What to configure before running the installer
+
+You'll need:
+- NFS enabled on your Synology/NAS
+- Remote Login (SSH) enabled on your Mac
+- Your IP addresses and paths ready
+
+### 2. Install Gum (required for installer UI)
 
 ```bash
 brew install gum
 ```
 
-### 2. Clone the repository
+### 3. Clone the repository
 
 ```bash
 git clone https://github.com/yourusername/transcodarr.git
 cd transcodarr
 ```
 
-### 3. Run the installer
+### 4. Run the installer
 
 ```bash
 ./install.sh
 ```
 
 The interactive installer will guide you through:
-- Mac Mini setup (FFmpeg, NFS, LaunchDaemons)
+- Apple Silicon Mac setup (FFmpeg, NFS, LaunchDaemons)
 - Jellyfin/Docker configuration (rffmpeg, SSH keys)
 - Monitoring setup (Prometheus/Grafana)
 

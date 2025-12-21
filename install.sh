@@ -362,12 +362,17 @@ view_docs() {
     choice=$(gum choose \
         --header "Which documentation?" \
         --cursor.foreground 212 \
+        "📋 Prerequisites (Read First!)" \
         "📖 Full Setup Guide" \
         "🖥️  Apple Silicon Mac Quick Start" \
         "🐳 Jellyfin Quick Start" \
         "⬅️  Back to main menu")
 
     case "$choice" in
+        "📋 Prerequisites (Read First!)")
+            gum pager < "$SCRIPT_DIR/docs/PREREQUISITES.md"
+            view_docs
+            ;;
         "📖 Full Setup Guide")
             gum pager < "$SCRIPT_DIR/LIVE_TRANSCODING_GUIDE.md"
             view_docs
