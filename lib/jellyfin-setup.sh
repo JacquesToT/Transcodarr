@@ -507,6 +507,7 @@ show_summary() {
     local nas_ip="$3"
     local nas_user="$4"
     local jellyfin_config="$5"
+    local cache_path="$6"
     local public_key=""
 
     if [[ -f "${OUTPUT_DIR}/rffmpeg/.ssh/id_rsa.pub" ]]; then
@@ -550,8 +551,8 @@ show_summary() {
     gum style --foreground 226 "STEP 2: Copy files to Synology (${nas_ip})"
     gum style --foreground 252 "Run these commands ONE BY ONE:"
     echo ""
-    gum style --foreground 245 "First, SSH into your Synology and create the folder:"
-    gum style --foreground 39 "ssh ${nas_user}@${nas_ip} \"mkdir -p ${jellyfin_config}/rffmpeg/.ssh\""
+    gum style --foreground 245 "First, SSH into your Synology and create the folders:"
+    gum style --foreground 39 "ssh ${nas_user}@${nas_ip} \"mkdir -p ${jellyfin_config}/rffmpeg/.ssh ${cache_path}\""
     echo ""
     gum style --foreground 245 "Then, copy the files from this Mac to Synology:"
     gum style --foreground 39 "scp -r ${OUTPUT_DIR}/rffmpeg/* ${nas_user}@${nas_ip}:${jellyfin_config}/rffmpeg/"
@@ -679,5 +680,5 @@ run_jellyfin_setup() {
     create_monitoring_config "$mac_ip" "$nas_ip"
     create_readme "$mac_ip" "$mac_user" "$nas_ip" "$nas_user" "$cache_path" "$jellyfin_config"
 
-    show_summary "$mac_ip" "$mac_user" "$nas_ip" "$nas_user" "$jellyfin_config"
+    show_summary "$mac_ip" "$mac_user" "$nas_ip" "$nas_user" "$jellyfin_config" "$cache_path"
 }
