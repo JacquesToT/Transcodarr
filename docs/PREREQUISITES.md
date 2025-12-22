@@ -2,6 +2,90 @@
 
 Before running the Transcodarr installer, you need to prepare a few things on your NAS and Mac.
 
+---
+
+## Step 0: Install Required Tools on Synology
+
+Before you can run the installer, you need three tools on your Synology:
+1. **Git** - to download Transcodarr
+2. **Homebrew** - a package manager (like an app store for command-line tools)
+3. **Gum** - makes the installer look nice and interactive
+
+### 0.1 Install Git (via Package Center)
+
+This is the easiest part - Git is available in Synology's built-in app store!
+
+1. Open **Package Center** on your Synology
+2. Search for **"Git"** (or find it under "Developer Tools")
+3. Click **Install**
+4. Wait for it to finish
+5. ✅ Done!
+
+**To verify:** Open Terminal (or SSH into your Synology) and type:
+```bash
+git --version
+```
+You should see something like `git version 2.x.x`
+
+### 0.2 Install Homebrew on Synology
+
+Homebrew is a tool that lets you install software easily. There's a special version made for Synology!
+
+**SSH into your Synology first:**
+```bash
+ssh your-admin-user@your-synology-ip
+```
+
+**Then run this one command to install Homebrew:**
+```bash
+git clone https://github.com/MrCee/Synology-Homebrew.git ~/Synology-Homebrew && \
+~/Synology-Homebrew/install-synology-homebrew.sh
+```
+
+**What this does (in simple terms):**
+- Downloads the Synology Homebrew installer
+- Runs it automatically
+- Sets up Homebrew so you can use it
+
+**After installation, close and reopen your terminal**, or run:
+```bash
+source ~/.bashrc
+```
+
+**To verify Homebrew works:**
+```bash
+brew --version
+```
+You should see something like `Homebrew 4.x.x`
+
+### 0.3 Install Gum
+
+Now that Homebrew is installed, installing Gum is easy!
+
+```bash
+brew install gum
+```
+
+**To verify Gum works:**
+```bash
+gum --version
+```
+You should see something like `gum version 0.x.x`
+
+### 0.4 Download Transcodarr
+
+Now you can download Transcodarr:
+
+```bash
+git clone https://github.com/JacquesToT/Transcodarr.git ~/Transcodarr
+cd ~/Transcodarr
+chmod +x install.sh
+```
+
+✅ **You're ready to run the installer!** Continue with the steps below to prepare your NAS settings, then run `./install.sh`
+
+---
+
 ## What You'll Need
 
 | Item | Example | Where to find it |

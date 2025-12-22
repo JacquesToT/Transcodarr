@@ -15,22 +15,47 @@ Both machines need to be on the same network.
 
 ---
 
-## Step 1: Download Transcodarr
+## Step 0: Install Prerequisites on Synology (First Time Only)
 
-On your Mac, open Terminal and run:
+Before you can run the installer, your Synology needs Git, Homebrew, and Gum.
+
+### 0.1 Install Git
+1. Open **Package Center** on Synology
+2. Search for **"Git"**
+3. Click **Install**
+
+### 0.2 Install Homebrew & Gum
+
+SSH into your Synology and run:
 
 ```bash
-# Download
+# Install Homebrew (one command - copies the whole block):
+git clone https://github.com/MrCee/Synology-Homebrew.git ~/Synology-Homebrew && \
+~/Synology-Homebrew/install-synology-homebrew.sh
+
+# IMPORTANT: Restart your terminal after Homebrew installs!
+
+# Then install Gum:
+brew install gum
+```
+
+> 📖 **Need more details?** See [Prerequisites → Step 0](docs/PREREQUISITES.md#step-0-install-required-tools-on-synology) for ELI5 instructions.
+
+---
+
+## Step 1: Download Transcodarr
+
+On your Synology (via SSH), run:
+
+```bash
 git clone https://github.com/JacquesToT/Transcodarr.git
 cd Transcodarr
-
-# Make executable
 chmod +x install.sh
 ```
 
 ---
 
-## Step 2: Run the Installer on Your Mac
+## Step 2: Run the Installer
 
 ```bash
 ./install.sh
