@@ -52,9 +52,9 @@ You can have **one node** (single Mac) or **multiple nodes** (several Macs shari
 - Network connection to NAS
 
 ### Server (Jellyfin Host)
-- Synology NAS (or other Linux server)
-- Docker with docker-compose
-- NFS server capability (for media sharing)
+- Synology NAS with Container Manager (Docker)
+- Jellyfin running in Docker container
+- NFS enabled (for media sharing to Mac)
 - Network connection to Mac transcode node
 
 ---
@@ -98,6 +98,8 @@ ssh your-admin-user@your-synology-ip
 git clone https://github.com/MrCee/Synology-Homebrew.git ~/Synology-Homebrew && \
 ~/Synology-Homebrew/install-synology-homebrew.sh
 ```
+
+**When asked, select option `1` (Minimal installation)** - this is all you need.
 
 **What this does (in simple terms):**
 - Downloads the Synology Homebrew installer
