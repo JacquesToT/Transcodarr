@@ -78,12 +78,6 @@ This is the easiest part - Git is available in Synology's built-in app store!
 4. Wait for it to finish
 5. Done!
 
-**To verify:** SSH into your Synology and type:
-```bash
-git --version
-```
-You should see something like `git version 2.x.x`
-
 ### 0.2 Install Homebrew on Synology
 
 Homebrew is a tool that lets you install software easily. There's a special version made for Synology!
@@ -99,37 +93,19 @@ git clone https://github.com/MrCee/Synology-Homebrew.git ~/Synology-Homebrew && 
 ~/Synology-Homebrew/install-synology-homebrew.sh
 ```
 
-**When asked, select option `1` (Minimal installation)** - this is all you need.
+**When asked, select option `1` (Minimal installation)** - this is all you need. Wait for it to complete.
 
-**What this does (in simple terms):**
-- Downloads the Synology Homebrew installer
-- Runs it automatically
-- Sets up Homebrew so you can use it
-
-**After installation, close and reopen your terminal**, or run:
-```bash
-source ~/.bashrc
-```
-
-**To verify Homebrew works:**
-```bash
-brew --version
-```
-You should see something like `Homebrew 4.x.x`
+**If asked:** `Prune these back to minimal now? [y/N]:` → type **N** and press Enter.
 
 ### 0.3 Install Gum
 
-Now that Homebrew is installed, installing Gum is easy!
+Stay in the same terminal and install Gum:
 
 ```bash
 brew install gum
 ```
 
-**To verify Gum works:**
-```bash
-gum --version
-```
-You should see something like `gum version 0.x.x`
+**After Gum is installed:** Close the terminal completely and open a new one. Then SSH into your Synology again before continuing.
 
 ---
 
