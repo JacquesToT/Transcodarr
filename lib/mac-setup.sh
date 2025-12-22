@@ -348,6 +348,8 @@ run_mac_setup() {
 
     # Handle reboot at the end
     if [[ "$NEEDS_REBOOT" == true ]]; then
+        local mac_ip=$(ipconfig getifaddr en0 2>/dev/null || echo "<this-mac-ip>")
+
         echo ""
         gum style --foreground 226 --border double --padding "1 2" \
             "🔄 REBOOT REQUIRED"
@@ -357,12 +359,21 @@ run_mac_setup() {
         echo ""
         gum style --foreground 212 "📋 AFTER YOU REBOOT:"
         echo ""
-        gum style --foreground 39 "1. Add the SSH key to this Mac"
-        gum style --foreground 252 "   The Synology installer showed you a command like:"
-        gum style --foreground 252 "   mkdir -p ~/.ssh && echo 'ssh-ed25519 ...' >> ~/.ssh/authorized_keys"
-        echo ""
-        gum style --foreground 39 "2. Go back to your Synology and run:"
-        gum style --foreground 252 "   docker exec jellyfin rffmpeg add <this-mac-ip> --weight 2"
+
+        if grep -q "transcodarr-rffmpeg" ~/.ssh/authorized_keys 2>/dev/null; then
+            gum style --foreground 46 "✅ SSH key already installed (from Synology installer)"
+            echo ""
+            gum style --foreground 39 "Just go back to your Synology and run:"
+            gum style --foreground 252 "   docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
+        else
+            gum style --foreground 39 "1. Add the SSH key to this Mac"
+            gum style --foreground 252 "   The Synology installer showed you a command like:"
+            gum style --foreground 252 "   mkdir -p ~/.ssh && echo 'ssh-ed25519 ...' >> ~/.ssh/authorized_keys"
+            echo ""
+            gum style --foreground 39 "2. Go back to your Synology and run:"
+            gum style --foreground 252 "   docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
+        fi
+
         echo ""
         gum style --foreground 46 "✅ That's it! Your Mac is ready for transcoding."
         echo ""
@@ -377,15 +388,27 @@ run_mac_setup() {
             gum style --foreground 252 "Run 'sudo reboot' when ready."
         fi
     else
+        # Check if SSH key is already installed (from Synology installer)
+        local mac_ip=$(ipconfig getifaddr en0 2>/dev/null || echo "<this-mac-ip>")
+
         echo ""
         gum style --foreground 212 "📋 NEXT STEPS:"
         echo ""
-        gum style --foreground 39 "1. Add the SSH key to this Mac"
-        gum style --foreground 252 "   The Synology installer showed you a command like:"
-        gum style --foreground 252 "   mkdir -p ~/.ssh && echo 'ssh-ed25519 ...' >> ~/.ssh/authorized_keys"
-        echo ""
-        gum style --foreground 39 "2. Go back to your Synology and run:"
-        gum style --foreground 252 "   docker exec jellyfin rffmpeg add <this-mac-ip> --weight 2"
+
+        if grep -q "transcodarr-rffmpeg" ~/.ssh/authorized_keys 2>/dev/null; then
+            gum style --foreground 46 "✅ SSH key already installed (from Synology installer)"
+            echo ""
+            gum style --foreground 39 "Just go back to your Synology and run:"
+            gum style --foreground 252 "   docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
+        else
+            gum style --foreground 39 "1. Add the SSH key to this Mac"
+            gum style --foreground 252 "   The Synology installer showed you a command like:"
+            gum style --foreground 252 "   mkdir -p ~/.ssh && echo 'ssh-ed25519 ...' >> ~/.ssh/authorized_keys"
+            echo ""
+            gum style --foreground 39 "2. Go back to your Synology and run:"
+            gum style --foreground 252 "   docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
+        fi
+
         echo ""
         gum style --foreground 46 "✅ That's it! Your Mac is ready for transcoding."
     fi
