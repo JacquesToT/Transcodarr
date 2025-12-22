@@ -206,6 +206,8 @@ Choose **"First Time Setup"** and follow the prompts. The installer will:
 - Generate SSH keys for rffmpeg
 - Create config files in the `output/` folder
 
+> **Tip:** When the installer shows the commands to copy files, choose **"Exit installer"** and run the commands one by one in the same terminal. This is easier than copying from the installer output.
+
 ---
 
 ## Step 3: Copy Files to Jellyfin

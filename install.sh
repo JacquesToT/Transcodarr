@@ -350,7 +350,8 @@ first_time_setup() {
         --cursor.foreground 212 \
         "🐳 On the Synology/NAS (do this FIRST)" \
         "🖥️  On the Mac (do this SECOND)" \
-        "⬅️  Back to main menu")
+        "⬅️  Back to main menu" \
+        "❌ Exit installer")
 
     case "$where_am_i" in
         "🐳 On the Synology/NAS (do this FIRST)")
@@ -361,6 +362,9 @@ first_time_setup() {
             ;;
         "⬅️  Back to main menu")
             main_menu
+            ;;
+        "❌ Exit installer")
+            exit 0
             ;;
     esac
 }
@@ -385,7 +389,8 @@ add_another_node() {
         --cursor.foreground 212 \
         "🖥️  On the NEW Mac (that I want to add)" \
         "🐳 On the NAS/Server (to register the new Mac)" \
-        "⬅️  Back to main menu")
+        "⬅️  Back to main menu" \
+        "❌ Exit installer")
 
     case "$where_am_i" in
         "🖥️  On the NEW Mac (that I want to add)")
@@ -396,6 +401,9 @@ add_another_node() {
             ;;
         "⬅️  Back to main menu")
             main_menu
+            ;;
+        "❌ Exit installer")
+            exit 0
             ;;
     esac
 }
@@ -576,7 +584,8 @@ setup_additional_mac() {
             --cursor.foreground 212 \
             "🔧 Complete first setup (copy SSH key to Synology)" \
             "📝 Enter the SSH key manually" \
-            "⬅️  Back to main menu")
+            "⬅️  Back to main menu" \
+            "❌ Exit installer")
 
         case "$recovery_choice" in
             "🔧 Complete first setup (copy SSH key to Synology)")
@@ -599,6 +608,10 @@ setup_additional_mac() {
                 ;;
             "⬅️  Back to main menu")
                 main_menu
+                return
+                ;;
+            "❌ Exit installer")
+                exit 0
                 return
                 ;;
         esac
@@ -1056,7 +1069,8 @@ setup_monitoring() {
         --cursor.foreground 212 \
         "📖 I don't have Prometheus/Grafana yet - show me how to set it up" \
         "✅ I already have Prometheus/Grafana - just configure it" \
-        "⬅️  Back to main menu (skip monitoring)")
+        "⬅️  Back to main menu (skip monitoring)" \
+        "❌ Exit installer")
 
     case "$choice" in
         "📖 I don't have Prometheus/Grafana yet - show me how to set it up")
@@ -1067,6 +1081,9 @@ setup_monitoring() {
             ;;
         "⬅️  Back to main menu (skip monitoring)")
             main_menu
+            ;;
+        "❌ Exit installer")
+            exit 0
             ;;
     esac
 }
@@ -1323,7 +1340,8 @@ view_docs() {
         "📖 Full Setup Guide" \
         "🖥️  Apple Silicon Mac Quick Start" \
         "🐳 Jellyfin Quick Start" \
-        "⬅️  Back to main menu")
+        "⬅️  Back to main menu" \
+        "❌ Exit installer")
 
     case "$choice" in
         "📋 Prerequisites (Read First!)")
@@ -1352,6 +1370,9 @@ view_docs() {
             ;;
         "⬅️  Back to main menu")
             main_menu
+            ;;
+        "❌ Exit installer")
+            exit 0
             ;;
     esac
 }
