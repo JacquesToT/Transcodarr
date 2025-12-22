@@ -569,13 +569,35 @@ show_summary() {
 
     echo ""
     gum style --foreground 226 "STEP 4: Add SSH key to your Mac"
-    gum style --foreground 252 "After Mac setup, run this command ON YOUR MAC:"
+    gum style --foreground 252 "We can install the SSH key on your Mac from here (requires Mac password once)."
     echo ""
-    gum style --foreground 39 --border normal --padding "0 1" \
-        "mkdir -p ~/.ssh && echo '${public_key}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+
+    if gum confirm "Install SSH key on Mac now? (you'll need to enter your Mac password)"; then
+        echo ""
+        gum style --foreground 212 "Connecting to Mac at ${mac_ip}..."
+        gum style --foreground 252 "Enter your Mac password when prompted:"
+        echo ""
+
+        # Run the SSH key installation command on the Mac
+        if ssh -o StrictHostKeyChecking=accept-new "${mac_user}@${mac_ip}" "mkdir -p ~/.ssh && echo '${public_key}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"; then
+            echo ""
+            gum style --foreground 46 "✅ SSH key installed on Mac!"
+        else
+            echo ""
+            gum style --foreground 196 "❌ Failed to install SSH key. You can do it manually:"
+            gum style --foreground 39 --border normal --padding "0 1" \
+                "mkdir -p ~/.ssh && echo '${public_key}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+        fi
+    else
+        echo ""
+        gum style --foreground 252 "Run this command ON YOUR MAC after Mac setup:"
+        echo ""
+        gum style --foreground 39 --border normal --padding "0 1" \
+            "mkdir -p ~/.ssh && echo '${public_key}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+    fi
 
     echo ""
-    gum style --foreground 226 "STEP 5: Add Mac to rffmpeg (back on Synology):"
+    gum style --foreground 226 "STEP 5: Add Mac to rffmpeg (after Mac setup is complete):"
     echo ""
     gum style --foreground 39 --border normal --padding "0 1" \
         "docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
