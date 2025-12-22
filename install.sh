@@ -30,9 +30,9 @@ setup_brew_path() {
         return 0
     fi
 
-    # Check Synology-Homebrew location first (installed via MrCee/Synology-Homebrew)
-    if [[ -f "$HOME/homebrew/bin/brew" ]]; then
-        export PATH="$HOME/homebrew/bin:$PATH"
+    # Check Synology-Homebrew / Linuxbrew location (installed via MrCee/Synology-Homebrew)
+    if [[ -f "/home/linuxbrew/.linuxbrew/bin/brew" ]]; then
+        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
         return 0
     fi
 
