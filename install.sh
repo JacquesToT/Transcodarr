@@ -368,6 +368,130 @@ add_another_node() {
     esac
 }
 
+# Complete first setup - copy SSH key to Synology when first setup wasn't finished
+complete_first_setup() {
+    local nas_ip="$1"
+    local nas_user="$2"
+    local jellyfin_config="$3"
+
+    gum style \
+        --foreground 212 \
+        --border-foreground 212 \
+        --border normal \
+        --padding "1 2" \
+        "🔧 Complete First Setup"
+
+    echo ""
+    gum style --foreground 252 "I'll help you copy the SSH key to your Synology."
+    echo ""
+
+    # Check if we have a local output folder with keys
+    local local_key_path="${SCRIPT_DIR}/output/rffmpeg/.ssh/id_rsa.pub"
+    local public_key=""
+
+    if [[ -f "$local_key_path" ]]; then
+        gum style --foreground 46 "✅ Found existing SSH key in output folder"
+        public_key=$(cat "$local_key_path")
+    else
+        gum style --foreground 226 "⚠️  No SSH key found in output folder."
+        echo ""
+
+        if gum confirm "Generate a new SSH key?"; then
+            gum style --foreground 212 "Generating new SSH key..."
+            mkdir -p "${SCRIPT_DIR}/output/rffmpeg/.ssh"
+            ssh-keygen -t ed25519 -f "${SCRIPT_DIR}/output/rffmpeg/.ssh/id_rsa" -N "" -C "transcodarr-rffmpeg"
+            chmod 600 "${SCRIPT_DIR}/output/rffmpeg/.ssh/id_rsa"
+            chmod 644 "${SCRIPT_DIR}/output/rffmpeg/.ssh/id_rsa.pub"
+            public_key=$(cat "${SCRIPT_DIR}/output/rffmpeg/.ssh/id_rsa.pub")
+            gum style --foreground 46 "✅ SSH key generated"
+        else
+            main_menu
+            return
+        fi
+    fi
+
+    echo ""
+    gum style --foreground 212 "📤 Copying files to Synology..."
+    gum style --foreground 252 "This will:"
+    gum style --foreground 252 "  1. Create the rffmpeg folder on Synology"
+    gum style --foreground 252 "  2. Copy the SSH key and config files"
+    echo ""
+
+    # Step 1: Create directory on Synology
+    gum style --foreground 245 "Step 1/3: Creating folder on Synology..."
+    if ssh -t -o ConnectTimeout=10 "${nas_user}@${nas_ip}" "sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh && sudo chmod 755 ${jellyfin_config}/rffmpeg && sudo chmod 700 ${jellyfin_config}/rffmpeg/.ssh" 2>/dev/null; then
+        gum style --foreground 46 "✅ Folder created"
+    else
+        gum style --foreground 196 "❌ Failed to create folder"
+        gum style --foreground 252 "Try running manually:"
+        gum style --foreground 39 "  ssh -t ${nas_user}@${nas_ip} \"sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh\""
+        echo ""
+        gum confirm "Return to main menu?" && main_menu
+        return
+    fi
+
+    # Step 2: Copy files via tar to home, then move with sudo
+    gum style --foreground 245 "Step 2/3: Copying files to Synology..."
+
+    # First copy to home directory (no sudo needed)
+    if cd "${SCRIPT_DIR}/output" && tar czf - rffmpeg | ssh "${nas_user}@${nas_ip}" "tar xzf -" 2>/dev/null; then
+        gum style --foreground 46 "✅ Files copied to home folder"
+    else
+        gum style --foreground 196 "❌ Failed to copy files"
+        echo ""
+        gum confirm "Return to main menu?" && main_menu
+        return
+    fi
+
+    # Step 3: Move files to final location with sudo
+    gum style --foreground 245 "Step 3/3: Moving files to Jellyfin folder (needs sudo)..."
+    if ssh -t "${nas_user}@${nas_ip}" "sudo cp -r ~/rffmpeg/* ${jellyfin_config}/rffmpeg/ && sudo chmod 600 ${jellyfin_config}/rffmpeg/.ssh/id_rsa && sudo chmod 644 ${jellyfin_config}/rffmpeg/.ssh/id_rsa.pub && rm -rf ~/rffmpeg" 2>/dev/null; then
+        gum style --foreground 46 "✅ Files moved to ${jellyfin_config}/rffmpeg/"
+    else
+        gum style --foreground 196 "❌ Failed to move files"
+        gum style --foreground 252 "Try running manually on Synology:"
+        gum style --foreground 39 "  sudo cp -r ~/rffmpeg/* ${jellyfin_config}/rffmpeg/"
+        gum style --foreground 39 "  sudo chmod 600 ${jellyfin_config}/rffmpeg/.ssh/id_rsa"
+        echo ""
+        gum confirm "Return to main menu?" && main_menu
+        return
+    fi
+
+    echo ""
+    gum style --foreground 46 --border double --padding "1 2" \
+        "✅ First setup completed!"
+
+    echo ""
+    gum style --foreground 252 "The SSH key is now on your Synology."
+    gum style --foreground 252 "You can now add this Mac (and any other Macs) as transcode nodes."
+    echo ""
+
+    # Add key to this Mac's authorized_keys
+    gum style --foreground 212 "Adding SSH key to this Mac..."
+    mkdir -p ~/.ssh
+    chmod 700 ~/.ssh
+
+    if grep -q "$public_key" ~/.ssh/authorized_keys 2>/dev/null; then
+        gum style --foreground 46 "✅ SSH key already in authorized_keys"
+    else
+        echo "$public_key" >> ~/.ssh/authorized_keys
+        chmod 600 ~/.ssh/authorized_keys
+        gum style --foreground 46 "✅ SSH key added to ~/.ssh/authorized_keys"
+    fi
+
+    # Show command to register this Mac
+    local mac_ip=$(ipconfig getifaddr en0 2>/dev/null || echo "THIS_MAC_IP")
+
+    echo ""
+    gum style --foreground 212 "📋 Next: Register this Mac with rffmpeg"
+    echo ""
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "ssh -t ${nas_user}@${nas_ip} \"sudo docker exec jellyfin rffmpeg add ${mac_ip} --weight 2\""
+
+    echo ""
+    gum confirm "Return to main menu?" && main_menu
+}
+
 # Setup an additional Mac (uses existing SSH key from Synology)
 setup_additional_mac() {
     gum style \
@@ -408,17 +532,42 @@ setup_additional_mac() {
 
     if [[ -z "$public_key" ]]; then
         echo ""
-        gum style --foreground 196 "❌ Could not fetch the SSH key from Synology."
-        gum style --foreground 252 "Possible reasons:"
-        gum style --foreground 252 "  • Wrong IP, username, or path"
-        gum style --foreground 252 "  • SSH not enabled on Synology"
-        gum style --foreground 252 "  • First node not set up yet"
+        gum style --foreground 226 "⚠️  Could not fetch the SSH key from Synology."
+        gum style --foreground 252 "This usually means the first setup was not completed."
         echo ""
-        gum style --foreground 226 "You can manually get the key by running on Synology:"
-        gum style --foreground 39 "  cat ${ssh_key_path}"
-        echo ""
-        gum confirm "Return to main menu?" && main_menu
-        return
+
+        local recovery_choice
+        recovery_choice=$(gum choose \
+            --header "What would you like to do?" \
+            --cursor.foreground 212 \
+            "🔧 Complete first setup (copy SSH key to Synology)" \
+            "📝 Enter the SSH key manually" \
+            "⬅️  Back to main menu")
+
+        case "$recovery_choice" in
+            "🔧 Complete first setup (copy SSH key to Synology)")
+                complete_first_setup "$nas_ip" "$nas_user" "$jellyfin_config"
+                return
+                ;;
+            "📝 Enter the SSH key manually")
+                echo ""
+                gum style --foreground 252 "Get the key from your first Mac's output folder:"
+                gum style --foreground 39 "  cat ~/Transcodarr/output/rffmpeg/.ssh/id_rsa.pub"
+                echo ""
+                gum style --foreground 252 "Paste the SSH public key (starts with 'ssh-ed25519' or 'ssh-rsa'):"
+                public_key=$(gum input --placeholder "ssh-ed25519 AAAA..." --prompt "SSH key: " --width 80)
+
+                if [[ -z "$public_key" ]] || [[ ! "$public_key" =~ ^ssh- ]]; then
+                    gum style --foreground 196 "Invalid SSH key format"
+                    gum confirm "Return to main menu?" && main_menu
+                    return
+                fi
+                ;;
+            "⬅️  Back to main menu")
+                main_menu
+                return
+                ;;
+        esac
     fi
 
     gum style --foreground 46 "✅ SSH key fetched successfully!"
