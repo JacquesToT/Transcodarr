@@ -856,34 +856,9 @@ setup_apple_silicon() {
 
     run_mac_setup "$NAS_IP" "$MEDIA_PATH" "$CACHE_PATH"
 
-    echo ""
-    gum style --foreground 46 --border double --padding "1 2" \
-        "✅ Mac setup complete!"
-
-    echo ""
-    gum style --foreground 252 "This Mac is now ready to receive transcoding jobs."
-    gum style --foreground 252 "Next, you need to configure the Jellyfin/server side."
-    echo ""
-
-    local next_step
-    next_step=$(gum choose \
-        --header "What would you like to do next?" \
-        --cursor.foreground 212 \
-        "🐳 Continue to Jellyfin Setup (generate server config files)" \
-        "📋 Show me what to do manually" \
-        "⬅️  Return to main menu")
-
-    case "$next_step" in
-        "🐳 Continue to Jellyfin Setup (generate server config files)")
-            setup_jellyfin
-            ;;
-        "📋 Show me what to do manually")
-            show_manual_next_steps "$NAS_IP"
-            ;;
-        "⬅️  Return to main menu")
-            main_menu
-            ;;
-    esac
+    # mac-setup.sh shows the next steps (add SSH key, go back to Synology)
+    # Just offer to return to menu or exit
+    return_or_exit
 }
 
 # Show manual next steps after Mac setup

@@ -353,20 +353,18 @@ run_mac_setup() {
             "🔄 REBOOT REQUIRED"
 
         echo ""
-        gum style --foreground 212 "A reboot is needed for the /data and /config folders to appear."
+        gum style --foreground 212 "A reboot is needed for the NFS mount points (/data and /config) to appear."
         echo ""
-        gum style --foreground 212 "📋 AFTER YOU REBOOT, here's what to do:"
+        gum style --foreground 212 "📋 AFTER YOU REBOOT:"
         echo ""
-        gum style --foreground 39 "1. Run the installer again:"
-        gum style --foreground 252 "   cd ~/Transcodarr && ./install.sh"
+        gum style --foreground 39 "1. Add the SSH key to this Mac"
+        gum style --foreground 252 "   The Synology installer showed you a command like:"
+        gum style --foreground 252 "   mkdir -p ~/.ssh && echo 'ssh-ed25519 ...' >> ~/.ssh/authorized_keys"
         echo ""
-        gum style --foreground 39 "2. Choose: 🐳 Continue to Jellyfin Setup"
-        gum style --foreground 252 "   This will generate all the config files for your server."
+        gum style --foreground 39 "2. Go back to your Synology and run:"
+        gum style --foreground 252 "   docker exec jellyfin rffmpeg add <this-mac-ip> --weight 2"
         echo ""
-        gum style --foreground 39 "3. Follow the instructions to:"
-        gum style --foreground 252 "   • Add the SSH key to this Mac"
-        gum style --foreground 252 "   • Copy files to your Synology/server"
-        gum style --foreground 252 "   • Start Jellyfin and add this Mac as a node"
+        gum style --foreground 46 "✅ That's it! Your Mac is ready for transcoding."
         echo ""
 
         if gum confirm "Reboot now?"; then
@@ -380,9 +378,15 @@ run_mac_setup() {
         fi
     else
         echo ""
-        gum style --foreground 212 "Next steps:"
-        gum style --foreground 252 "1. Continue with 'Jellyfin Setup' to generate config files"
-        gum style --foreground 252 "2. Copy SSH public key from Jellyfin server"
-        gum style --foreground 252 "3. Add this Mac to rffmpeg on the server"
+        gum style --foreground 212 "📋 NEXT STEPS:"
+        echo ""
+        gum style --foreground 39 "1. Add the SSH key to this Mac"
+        gum style --foreground 252 "   The Synology installer showed you a command like:"
+        gum style --foreground 252 "   mkdir -p ~/.ssh && echo 'ssh-ed25519 ...' >> ~/.ssh/authorized_keys"
+        echo ""
+        gum style --foreground 39 "2. Go back to your Synology and run:"
+        gum style --foreground 252 "   docker exec jellyfin rffmpeg add <this-mac-ip> --weight 2"
+        echo ""
+        gum style --foreground 46 "✅ That's it! Your Mac is ready for transcoding."
     fi
 }
