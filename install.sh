@@ -485,9 +485,10 @@ complete_first_setup() {
 
     echo ""
     gum style --foreground 212 "📋 Next: Register this Mac with rffmpeg"
+    gum style --foreground 245 "SSH into your Synology and run:"
     echo ""
     gum style --foreground 39 --border normal --padding "0 1" \
-        "ssh -t ${nas_user}@${nas_ip} \"sudo docker exec jellyfin rffmpeg add ${mac_ip} --weight 2\""
+        "sudo docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
 
     echo ""
     gum confirm "Return to main menu?" && main_menu
@@ -616,15 +617,17 @@ setup_additional_mac() {
     echo ""
     gum style --foreground 212 "📋 Final step - Register this Mac on your Synology:"
     echo ""
-    gum style --foreground 245 "Run this command on your Synology (or via SSH):"
+    gum style --foreground 245 "SSH into your Synology:"
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "ssh ${nas_user}@${nas_ip}"
+    echo ""
+    gum style --foreground 245 "Then run these commands:"
     echo ""
     gum style --foreground 39 --border normal --padding "0 1" \
-        "ssh -t ${nas_user}@${nas_ip} \"sudo docker exec jellyfin rffmpeg add ${mac_ip} --weight 2\""
-    echo ""
-    gum style --foreground 245 "Then verify with:"
+        "sudo docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
     echo ""
     gum style --foreground 39 --border normal --padding "0 1" \
-        "ssh ${nas_user}@${nas_ip} \"sudo docker exec jellyfin rffmpeg status\""
+        "sudo docker exec jellyfin rffmpeg status"
 
     echo ""
     gum confirm "Return to main menu?" && main_menu
