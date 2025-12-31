@@ -576,7 +576,7 @@ show_summary() {
         "📋 SYNOLOGY COMMANDS" \
         "" \
         "Now open a NEW terminal and SSH into your Synology." \
-        "Run these 4 commands one by one:"
+        "Run these 3 commands one by one:"
     echo ""
 
     gum style --foreground 226 "Command 1: Create rffmpeg directory"
@@ -592,17 +592,15 @@ show_summary() {
     gum style --foreground 226 "Command 3: Set permissions"
     gum style --foreground 39 --border normal --padding "0 1" \
         "sudo chown -R 911:911 ${jellyfin_config}/rffmpeg"
-    echo ""
-
-    gum style --foreground 226 "Command 4: Restart Jellyfin"
-    gum style --foreground 39 --border normal --padding "0 1" \
-        "docker restart jellyfin"
 
     echo ""
-    if ! gum confirm "Did you run all 4 commands on your Synology?"; then
+    gum style --foreground 196 --bold "⚠️  DO NOT restart Jellyfin yet! First complete Mac setup."
+
+    echo ""
+    if ! gum confirm "Did you run all 3 commands on your Synology?"; then
         gum style --foreground 252 "No problem! You can run them later. Continuing..."
     else
-        gum style --foreground 46 "✅ Great! Jellyfin should now have rffmpeg configured."
+        gum style --foreground 46 "✅ Great! Files copied. Now continue with Mac setup."
     fi
 
     # STEP 2: Go to Mac
@@ -616,37 +614,36 @@ show_summary() {
         "" \
         "Choose: First Time Setup → On the Mac"
 
-    # STEP 3: Add Mac to rffmpeg
+    # STEP 3: Enable rffmpeg mod and add Mac
     echo ""
-    gum style --foreground 226 "STEP 3: Add Mac to rffmpeg (after Mac setup is complete):"
+    gum style --foreground 212 --border double --padding "1 2" \
+        "STEP 3: Enable rffmpeg mod & add Mac" \
+        "" \
+        "After Mac setup is complete, come back here and do this:"
     echo ""
 
-    # Check if rffmpeg is available in the Jellyfin container
-    if docker exec jellyfin ls /usr/local/bin/rffmpeg &>/dev/null; then
-        gum style --foreground 46 "✅ rffmpeg mod detected in Jellyfin container"
-        echo ""
-        gum style --foreground 39 --border normal --padding "0 1" \
-            "docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
-        echo ""
-        gum style --foreground 39 --border normal --padding "0 1" \
-            "docker exec jellyfin rffmpeg status"
-    else
-        gum style --foreground 196 "⚠️  rffmpeg NOT found in Jellyfin container!"
-        echo ""
-        gum style --foreground 252 "Your Jellyfin container needs the rffmpeg mod. Add these environment variables:"
-        echo ""
-        gum style --foreground 39 "  DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg"
-        gum style --foreground 39 "  FFMPEG_PATH=/usr/local/bin/ffmpeg"
-        echo ""
-        gum style --foreground 252 "Then recreate the container:"
-        gum style --foreground 39 "  docker compose down && docker compose up -d"
-        echo ""
-        gum style --foreground 252 "Or via Container Manager: Settings → Environment → Add variables"
-        echo ""
-        gum style --foreground 252 "After restarting, wait 30 seconds and run:"
-        gum style --foreground 39 --border normal --padding "0 1" \
-            "docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
-    fi
+    gum style --foreground 226 "3a. Add DOCKER_MODS to your docker-compose.yml:"
+    echo ""
+    gum style --foreground 39 "    environment:"
+    gum style --foreground 39 "      - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg"
+    gum style --foreground 39 "      - FFMPEG_PATH=/usr/local/bin/ffmpeg"
+    echo ""
+    gum style --foreground 245 "    Or via Container Manager: Settings → Environment → Add variables"
+    echo ""
+
+    gum style --foreground 226 "3b. Recreate the Jellyfin container:"
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "docker compose down && docker compose up -d"
+    echo ""
+
+    gum style --foreground 226 "3c. Wait 30 seconds, then add your Mac:"
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "docker exec jellyfin rffmpeg add ${mac_ip} --weight 2"
+    echo ""
+
+    gum style --foreground 226 "3d. Verify it worked:"
+    gum style --foreground 39 --border normal --padding "0 1" \
+        "docker exec jellyfin rffmpeg status"
 
     echo ""
     gum style --foreground 252 "For detailed instructions, read: ${OUTPUT_DIR}/SETUP_INSTRUCTIONS.md"
