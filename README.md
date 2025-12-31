@@ -75,18 +75,17 @@ You can have **one node** (single Mac) or **multiple nodes** (several Macs shari
 │   ├── Step 0: Install Git, Homebrew, Gum                        │
 │   ├── Step 1: Enable NFS                                        │
 │   ├── Step 2: Download & run installer                          │
-│   ├── Step 3: Copy rffmpeg files to Jellyfin                    │
-│   └── Step 4: Configure Jellyfin with rffmpeg mod               │
+│   └── Step 3: Copy rffmpeg files to Jellyfin                    │
 │                                                                  │
 │   PART B: MAC (finish Mac setup)                                │
-│   ├── Step 5: Run installer on Mac                              │
-│   └── Step 6: Add SSH key                                       │
+│   ├── Step 4: Run installer on Mac                              │
+│   └── Step 5: Add SSH key                                       │
 │                                                                  │
 │   PART C: FINALIZE (back to Synology)                           │
-│   └── Step 7: Add Mac to rffmpeg & test                         │
+│   └── Step 6: Enable rffmpeg mod & add Mac                      │
 │                                                                  │
 │   PART D: ADD MORE NODES (optional)                             │
-│   └── Repeat Part B + Step 7 for each additional Mac            │
+│   └── Repeat Part B + Step 6 for each additional Mac            │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -247,70 +246,13 @@ sudo cp -a ~/Transcodarr/output/rffmpeg/. /volume1/docker/jellyfin/rffmpeg/
 
 ---
 
-## Step 4: Configure Jellyfin for rffmpeg
-
-**Now that the rffmpeg files are in place**, add the rffmpeg mod to Jellyfin.
-
-### Option A: Using Docker Compose (Recommended)
-
-If you use docker-compose, add these environment variables:
-
-```yaml
-version: '3.8'
-services:
-  jellyfin:
-    image: linuxserver/jellyfin:latest
-    container_name: jellyfin
-    restart: unless-stopped
-    ports:
-      - 8096:8096
-    environment:
-      - PUID=1026
-      - PGID=100
-      - TZ=Europe/Amsterdam
-      - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg    # ← ADD THIS
-      - FFMPEG_PATH=/usr/local/bin/ffmpeg                 # ← ADD THIS
-    volumes:
-      - /volume1/docker/jellyfin/config:/config
-      - /volume1/docker/jellyfin/cache:/cache
-      - /volume1/media:/media:ro
-```
-
-Then recreate the container:
-```bash
-docker compose down && docker compose up -d
-```
-
-### Option B: Using Synology Container Manager UI
-
-If you created Jellyfin via Container Manager (not docker-compose):
-
-1. Open **Container Manager** → **Container** → **jellyfin**
-2. Click **Stop** to stop the container
-3. Click **Settings** → **Advanced Settings** → **Environment**
-4. Add these two environment variables:
-
-| Variable | Value |
-|----------|-------|
-| `DOCKER_MODS` | `linuxserver/mods:jellyfin-rffmpeg` |
-| `FFMPEG_PATH` | `/usr/local/bin/ffmpeg` |
-
-5. Click **Save** and **Start** the container
-
-### Verify rffmpeg is installed
-
-Wait ~30 seconds after starting, then check:
-```bash
-docker exec jellyfin ls -la /usr/local/bin/rffmpeg
-```
-
-You should see the rffmpeg files. If you get "No such file", the mod isn't loaded yet.
+> **Note:** We will configure the rffmpeg mod later in Step 7, after the Mac is fully set up. The mod requires at least one Mac host to be configured, otherwise Jellyfin will crash!
 
 ---
 
 # PART B: Mac Setup (Finish Mac Setup)
 
-## Step 5: Run Installer on Mac
+## Step 4: Run Installer on Mac
 
 On your Mac, open Terminal:
 
@@ -331,7 +273,7 @@ Choose **"First Time Setup"** → **"On the Mac"**. The installer will:
 
 ---
 
-## Step 6: Add SSH Key to Your Mac
+## Step 5: Add SSH Key to Your Mac
 
 The installer on Synology generated an SSH key. You need to add it to your Mac.
 
@@ -345,17 +287,46 @@ mkdir -p ~/.ssh && echo 'ssh-ed25519 AAAA...' >> ~/.ssh/authorized_keys && chmod
 
 # PART C: Finalize (Back to Synology)
 
-## Step 7: Add Mac to rffmpeg & Test
+## Step 6: Enable rffmpeg Mod & Add Mac
 
-On your Synology, restart Jellyfin and add your Mac:
+Now that everything is in place, we can enable the rffmpeg mod and add your Mac.
+
+### 6.1 Add DOCKER_MODS to Jellyfin
+
+**Option A: Using Docker Compose (Recommended)**
+
+Add these environment variables to your docker-compose.yml:
+
+```yaml
+environment:
+  - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg
+  - FFMPEG_PATH=/usr/local/bin/ffmpeg
+```
+
+Then recreate the container:
+```bash
+docker compose down && docker compose up -d
+```
+
+**Option B: Using Synology Container Manager UI**
+
+1. Open **Container Manager** → **Container** → **jellyfin**
+2. Click **Stop** to stop the container
+3. Click **Settings** → **Advanced Settings** → **Environment**
+4. Add these two environment variables:
+
+| Variable | Value |
+|----------|-------|
+| `DOCKER_MODS` | `linuxserver/mods:jellyfin-rffmpeg` |
+| `FFMPEG_PATH` | `/usr/local/bin/ffmpeg` |
+
+5. Click **Save** and **Start** the container
+
+### 6.2 Add Your Mac to rffmpeg
+
+Wait ~30 seconds for Jellyfin to start, then add your Mac:
 
 ```bash
-# Restart Jellyfin to load the new rffmpeg config
-docker restart jellyfin
-
-# Wait 30 seconds for Jellyfin to start
-sleep 30
-
 # Add your Mac as a transcode node
 docker exec jellyfin rffmpeg add YOUR_MAC_IP --weight 2
 
@@ -383,7 +354,7 @@ Want to add more Macs to share the transcoding workload? Follow these steps for 
 ## Prerequisites
 
 - Part A, B, and C are already completed (you have one working Mac node)
-- The new Mac has Remote Login enabled (see Step 5)
+- The new Mac has Remote Login enabled (see Part A.1)
 
 ## For Each Additional Mac
 
@@ -489,7 +460,7 @@ docker exec jellyfin rffmpeg add 192.168.1.51 --weight 4  # M4 Mac Studio (gets 
 | `git: command not found` (Synology) | Run `export PATH="/volume1/@appstore/Git/bin:$PATH"` first |
 | `could not create leading directories` | Enable User Home in Control Panel → User & Group → Advanced |
 | `Bind mount failed: ... does not exist` | Create the missing directory with `sudo mkdir -p /volume1/docker/jellyfin/cache` |
-| Jellyfin crashes with rffmpeg mod | Copy rffmpeg files BEFORE adding DOCKER_MODS (Step 3 before Step 4) |
+| Jellyfin crashes with rffmpeg mod | Don't add DOCKER_MODS until Step 6 (after Mac setup is complete) |
 | SSH connection fails | Check Remote Login is enabled on Mac |
 | Video doesn't play | Verify libfdk-aac is installed |
 | Transcoding is slow | Check if using hardware encoder |
