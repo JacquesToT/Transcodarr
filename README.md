@@ -83,6 +83,9 @@ You can have **one node** (single Mac) or **multiple nodes** (several Macs shari
 │   PART C: FINALIZE (back to Synology)                           │
 │   └── Step 8: Add Mac to rffmpeg & test                         │
 │                                                                  │
+│   PART D: ADD MORE NODES (optional)                             │
+│   └── Repeat Part B + Step 8 for each additional Mac            │
+│                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -116,7 +119,19 @@ Homebrew is a tool that lets you install software easily. There's a special vers
 ssh your-admin-user@your-synology-ip
 ```
 
-**Then run this one command to install Homebrew:**
+**Before continuing, make sure these two things are set up:**
+
+1. **Enable User Home Service** (required for `~` to work):
+   - Open **Control Panel** → **User & Group** → **Advanced**
+   - Check **"Enable user home service"**
+   - Click **Apply**
+
+2. **Add Git to your PATH** (Synology doesn't do this automatically):
+   ```bash
+   export PATH="/volume1/@appstore/Git/bin:$PATH"
+   ```
+
+**Now run this command to install Homebrew:**
 ```bash
 git clone https://github.com/MrCee/Synology-Homebrew.git ~/Synology-Homebrew && \
 ~/Synology-Homebrew/install-synology-homebrew.sh
@@ -374,6 +389,85 @@ You should see your Mac listed as "idle":
 
 ---
 
+# PART D: Add More Nodes (Optional)
+
+Want to add more Macs to share the transcoding workload? Follow these steps for each additional Mac.
+
+## Prerequisites
+
+- Part A, B, and C are already completed (you have one working Mac node)
+- The new Mac has Remote Login enabled (see Step 5)
+
+## For Each Additional Mac
+
+### D.1 Run Installer on the New Mac
+
+On your **new Mac**, open Terminal:
+
+```bash
+git clone https://github.com/JacquesToT/Transcodarr.git ~/Transcodarr
+cd ~/Transcodarr
+chmod +x install.sh
+./install.sh
+```
+
+Choose **"First Time Setup"** → **"On the Mac"**. The installer will configure FFmpeg and energy settings.
+
+> **Note:** Reboot the Mac after setup for NFS mounts to work.
+
+### D.2 Add SSH Key to New Mac
+
+You need to add the **same SSH key** from your Synology to the new Mac.
+
+On your **Synology**, get the public key:
+
+```bash
+cat /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub
+```
+
+On your **new Mac**, add this key:
+
+```bash
+mkdir -p ~/.ssh && echo 'PASTE_KEY_HERE' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+```
+
+### D.3 Add New Mac to rffmpeg
+
+On your **Synology**:
+
+```bash
+# Add the new Mac (replace with actual IP)
+docker exec jellyfin rffmpeg add NEW_MAC_IP --weight 2
+
+# Verify all nodes are listed
+docker exec jellyfin rffmpeg status
+```
+
+You should see both Macs listed:
+```
++------------------+--------+--------+
+| Host             | State  | Weight |
++------------------+--------+--------+
+| 192.168.1.50     | idle   | 2      |
+| 192.168.1.51     | idle   | 2      |
++------------------+--------+--------+
+```
+
+### Weight Explained
+
+The `--weight` option controls how many jobs each Mac receives:
+- **Higher weight** = more transcoding jobs
+- **Equal weights** = jobs distributed evenly
+- Use higher weights for faster Macs (e.g., M4 vs M1)
+
+Example with different weights:
+```bash
+docker exec jellyfin rffmpeg add 192.168.1.50 --weight 2  # M1 Mac Mini
+docker exec jellyfin rffmpeg add 192.168.1.51 --weight 4  # M4 Mac Studio (gets 2x jobs)
+```
+
+---
+
 ## Architecture
 
 ```
@@ -405,6 +499,8 @@ You should see your Mac listed as "idle":
 
 | Issue | Solution |
 |-------|----------|
+| `git: command not found` (Synology) | Run `export PATH="/volume1/@appstore/Git/bin:$PATH"` first |
+| `could not create leading directories` | Enable User Home in Control Panel → User & Group → Advanced |
 | SSH connection fails | Check Remote Login is enabled on Mac |
 | Video doesn't play | Verify libfdk-aac is installed |
 | Transcoding is slow | Check if using hardware encoder |
