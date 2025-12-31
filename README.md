@@ -68,30 +68,55 @@ You can have **one node** (single Mac) or **multiple nodes** (several Macs shari
 │  SETUP ORDER                                                     │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│   PART A: SYNOLOGY (do this first)                              │
+│   PART A.1: MAC - Enable Remote Login (quick, do this first)   │
+│   └── Enable SSH access on your Mac                             │
+│                                                                  │
+│   PART A.2: SYNOLOGY                                            │
 │   ├── Step 0: Install Git, Homebrew, Gum                        │
 │   ├── Step 1: Enable NFS                                        │
 │   ├── Step 2: Download & run installer                          │
 │   ├── Step 3: Configure Jellyfin with rffmpeg mod               │
 │   └── Step 4: Copy rffmpeg files to Jellyfin                    │
 │                                                                  │
-│   PART B: MAC (do this second)                                  │
-│   ├── Step 5: Enable Remote Login                               │
-│   ├── Step 6: Run installer on Mac                              │
-│   └── Step 7: Add SSH key                                       │
+│   PART B: MAC (finish Mac setup)                                │
+│   ├── Step 5: Run installer on Mac                              │
+│   └── Step 6: Add SSH key                                       │
 │                                                                  │
 │   PART C: FINALIZE (back to Synology)                           │
-│   └── Step 8: Add Mac to rffmpeg & test                         │
+│   └── Step 7: Add Mac to rffmpeg & test                         │
 │                                                                  │
 │   PART D: ADD MORE NODES (optional)                             │
-│   └── Repeat Part B + Step 8 for each additional Mac            │
+│   └── Repeat Part B + Step 7 for each additional Mac            │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-# PART A: Synology Setup (Do This First)
+# PART A.1: Enable Remote Login on Mac (Do This First)
+
+The Synology installer will ask for your Mac's IP and username. So let's set that up first!
+
+## Enable Remote Login (SSH)
+
+The Jellyfin server needs SSH access to send FFmpeg commands to your Mac.
+
+1. Open **System Settings**
+2. Go to **General** → **Sharing**
+3. Enable **Remote Login**
+4. Under "Allow access for": select **All users** or add specific users
+
+## Note Your Information
+
+Have these ready for the Synology installer:
+- **Mac username**: Run `whoami` in Terminal
+- **Mac IP address**: System Settings → Network → Details
+
+**Tip:** For reliability, assign a static IP to your Mac in your router settings.
+
+---
+
+# PART A.2: Synology Setup
 
 ## Step 0: Install Required Tools on Synology
 
@@ -285,30 +310,9 @@ sudo cp -a output/rffmpeg/. /volume1/docker/jellyfin/rffmpeg/
 
 ---
 
-# PART B: Mac Setup (Do This Second)
+# PART B: Mac Setup (Finish Mac Setup)
 
-## Step 5: Prepare Your Mac
-
-### 5.1 Enable Remote Login (SSH)
-
-The Jellyfin server needs SSH access to send FFmpeg commands to your Mac.
-
-1. Open **System Settings**
-2. Go to **General** → **Sharing**
-3. Enable **Remote Login**
-4. Under "Allow access for": select **All users** or add specific users
-
-### 5.2 Note Your Information
-
-Have these ready:
-- **Mac username**: Run `whoami` in Terminal
-- **Mac IP address**: System Settings → Network → Details
-
-**Tip:** For reliability, assign a static IP to your Mac in your router settings.
-
----
-
-## Step 6: Run Installer on Mac
+## Step 5: Run Installer on Mac
 
 On your Mac, open Terminal:
 
@@ -329,7 +333,7 @@ Choose **"First Time Setup"** → **"On the Mac"**. The installer will:
 
 ---
 
-## Step 7: Add SSH Key to Your Mac
+## Step 6: Add SSH Key to Your Mac
 
 The installer on Synology generated an SSH key. You need to add it to your Mac.
 
@@ -343,7 +347,7 @@ mkdir -p ~/.ssh && echo 'ssh-ed25519 AAAA...' >> ~/.ssh/authorized_keys && chmod
 
 # PART C: Finalize (Back to Synology)
 
-## Step 8: Add Mac to rffmpeg & Test
+## Step 7: Add Mac to rffmpeg & Test
 
 On your Synology, restart Jellyfin and add your Mac:
 
