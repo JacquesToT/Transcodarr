@@ -579,9 +579,9 @@ show_summary() {
         "Run these 4 commands one by one:"
     echo ""
 
-    gum style --foreground 226 "Command 1: Create directories"
+    gum style --foreground 226 "Command 1: Create rffmpeg directory"
     gum style --foreground 39 --border normal --padding "0 1" \
-        "sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh ${cache_path}"
+        "sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh"
     echo ""
 
     gum style --foreground 226 "Command 2: Copy rffmpeg files"

@@ -232,6 +232,11 @@ Choose **"First Time Setup"** and follow the prompts. The installer will:
 
 ## Step 3: Configure Jellyfin for rffmpeg
 
+**First, create the cache directory (if it doesn't exist):**
+```bash
+sudo mkdir -p /volume1/docker/jellyfin/cache
+```
+
 **Important:** Your Jellyfin container needs the rffmpeg mod. Without it, `docker exec jellyfin rffmpeg` won't work!
 
 ### Option A: Using Docker Compose (Recommended)
@@ -257,12 +262,6 @@ services:
       - /volume1/docker/jellyfin/config:/config
       - /volume1/docker/jellyfin/cache:/cache
       - /volume1/media:/media:ro
-```
-
-**First, create the required directories (if they don't exist):**
-```bash
-sudo mkdir -p /volume1/docker/jellyfin/config
-sudo mkdir -p /volume1/docker/jellyfin/cache
 ```
 
 Then recreate the container:
