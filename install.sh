@@ -175,9 +175,14 @@ wizard_synology() {
     echo ""
     show_result true "Synology setup voltooid!"
     echo ""
-    show_info "Ga nu naar je Mac en voer uit:"
+    show_info "Ga nu naar je Mac en open Terminal:"
     echo ""
-    echo -e "  ${GREEN}cd ~/Transcodarr && ./install.sh${NC}"
+    echo "  1. Als je Git nog niet hebt, installeer Xcode Command Line Tools:"
+    echo -e "     ${GREEN}xcode-select --install${NC}"
+    echo ""
+    echo "  2. Clone en start de installer:"
+    echo -e "     ${GREEN}git clone https://github.com/JacquesToT/Transcodarr.git ~/Transcodarr${NC}"
+    echo -e "     ${GREEN}cd ~/Transcodarr && ./install.sh${NC}"
     echo ""
 }
 
