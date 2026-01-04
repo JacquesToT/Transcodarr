@@ -374,18 +374,53 @@ wizard_synology() {
     show_remote_install_complete "$mac_ip" "$mac_user"
     show_docker_mods_instructions "$mac_ip"
 
-    # Offer to add Mac to rffmpeg if container is running
-    if docker ps 2>/dev/null | grep -q jellyfin; then
+    # Step 8: Add Mac to rffmpeg
+    show_step 8 8 "Register Mac with rffmpeg"
+
+    echo ""
+    show_warning "╔═══════════════════════════════════════════════════════════╗"
+    show_warning "║  ACTION REQUIRED: Configure Jellyfin                      ║"
+    show_warning "╚═══════════════════════════════════════════════════════════╝"
+    echo ""
+    show_info "Add these environment variables to your Jellyfin container:"
+    echo ""
+    echo "  DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg"
+    echo "  FFMPEG_PATH=/usr/local/bin/ffmpeg"
+    echo ""
+    show_info "Then restart the Jellyfin container."
+    echo ""
+
+    if ask_confirm "Have you restarted Jellyfin with DOCKER_MODS enabled?"; then
         echo ""
-        if ask_confirm "Add Mac to rffmpeg now? (Jellyfin must have DOCKER_MODS enabled)"; then
-            if docker exec jellyfin rffmpeg add "$mac_ip" --weight 2 2>/dev/null; then
-                show_result true "Mac added to rffmpeg"
-                docker exec jellyfin rffmpeg status 2>/dev/null || true
-            else
-                show_warning "Could not add Mac - make sure DOCKER_MODS is configured"
-                show_info "After configuring, run: docker exec jellyfin rffmpeg add $mac_ip --weight 2"
-            fi
+        show_info "Waiting 10 seconds for rffmpeg to initialize..."
+        sleep 10
+
+        echo ""
+        show_info "Adding Mac to rffmpeg..."
+
+        if docker exec jellyfin rffmpeg add "$mac_ip" --weight 2 2>/dev/null; then
+            echo ""
+            show_result true "Mac added to rffmpeg!"
+            echo ""
+            show_info "Current rffmpeg status:"
+            docker exec jellyfin rffmpeg status 2>/dev/null || true
+        else
+            echo ""
+            show_error "Could not add Mac to rffmpeg"
+            show_info "This can happen if:"
+            echo "  - DOCKER_MODS is not configured"
+            echo "  - Container was not restarted"
+            echo "  - rffmpeg is still initializing"
+            echo ""
+            show_info "Try manually after container restart:"
+            echo -e "  ${GREEN}docker exec jellyfin rffmpeg add $mac_ip --weight 2${NC}"
         fi
+    else
+        echo ""
+        show_info "After restarting Jellyfin, run:"
+        echo ""
+        echo -e "  ${GREEN}docker exec jellyfin rffmpeg add $mac_ip --weight 2${NC}"
+        echo -e "  ${GREEN}docker exec jellyfin rffmpeg status${NC}"
     fi
 
     echo ""
