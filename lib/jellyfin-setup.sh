@@ -239,8 +239,9 @@ install_ssh_key_on_mac() {
 # COPY FILES TO JELLYFIN
 # ============================================================================
 
-show_copy_instructions() {
+copy_rffmpeg_files() {
     local jellyfin_config="$1"
+    local success=true
 
     echo ""
     if command -v gum &> /dev/null; then
@@ -258,16 +259,70 @@ show_copy_instructions() {
     fi
     echo ""
 
-    echo "  Voer deze 3 commando's uit op je Synology:"
+    echo "  De volgende commando's worden uitgevoerd:"
     echo ""
-    echo -e "  ${CYAN}1. Maak rffmpeg directory:${NC}"
-    echo -e "     ${GREEN}sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh${NC}"
+    echo -e "  ${CYAN}1.${NC} sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh"
+    echo -e "  ${CYAN}2.${NC} sudo cp -a ${OUTPUT_DIR}/rffmpeg/. ${jellyfin_config}/rffmpeg/"
+    echo -e "  ${CYAN}3.${NC} sudo chown -R 911:911 ${jellyfin_config}/rffmpeg"
     echo ""
-    echo -e "  ${CYAN}2. Kopieer rffmpeg files:${NC}"
-    echo -e "     ${GREEN}sudo cp -a ${OUTPUT_DIR}/rffmpeg/. ${jellyfin_config}/rffmpeg/${NC}"
+
+    if ask_confirm "Wil je deze commando's nu uitvoeren?"; then
+        echo ""
+        show_info "Sudo wachtwoord kan gevraagd worden..."
+        echo ""
+
+        # Step 1: Create directory
+        echo -n "  1. Directory aanmaken... "
+        if sudo mkdir -p "${jellyfin_config}/rffmpeg/.ssh" 2>/dev/null; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗${NC}"
+            success=false
+        fi
+
+        # Step 2: Copy files
+        echo -n "  2. Files kopiëren... "
+        if sudo cp -a "${OUTPUT_DIR}/rffmpeg/." "${jellyfin_config}/rffmpeg/" 2>/dev/null; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗${NC}"
+            success=false
+        fi
+
+        # Step 3: Set permissions
+        echo -n "  3. Permissies zetten... "
+        if sudo chown -R 911:911 "${jellyfin_config}/rffmpeg" 2>/dev/null; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗${NC}"
+            success=false
+        fi
+
+        echo ""
+        if [[ "$success" == true ]]; then
+            show_result true "Alle files gekopieerd naar Jellyfin config"
+            mark_step_complete "files_copied"
+            return 0
+        else
+            show_result false "Sommige commando's zijn mislukt"
+            show_manual_copy_instructions "$jellyfin_config"
+            return 1
+        fi
+    else
+        show_manual_copy_instructions "$jellyfin_config"
+        return 0
+    fi
+}
+
+show_manual_copy_instructions() {
+    local jellyfin_config="$1"
+
     echo ""
-    echo -e "  ${CYAN}3. Zet permissies:${NC}"
-    echo -e "     ${GREEN}sudo chown -R 911:911 ${jellyfin_config}/rffmpeg${NC}"
+    show_info "Voer deze commando's handmatig uit:"
+    echo ""
+    echo -e "  ${GREEN}sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh${NC}"
+    echo -e "  ${GREEN}sudo cp -a ${OUTPUT_DIR}/rffmpeg/. ${jellyfin_config}/rffmpeg/${NC}"
+    echo -e "  ${GREEN}sudo chown -R 911:911 ${jellyfin_config}/rffmpeg${NC}"
     echo ""
 }
 
@@ -351,13 +406,8 @@ run_jellyfin_setup() {
     # Install SSH key on Mac
     install_ssh_key_on_mac "$mac_ip" "$mac_user"
 
-    # Show copy instructions
-    show_copy_instructions "$jellyfin_config"
-
-    if wait_for_user "Heb je de 3 commando's uitgevoerd?"; then
-        show_result true "Files gekopieerd"
-        mark_step_complete "files_copied"
-    fi
+    # Copy rffmpeg files to Jellyfin config (with sudo)
+    copy_rffmpeg_files "$jellyfin_config"
 
     # Show DOCKER_MODS instructions
     echo ""
