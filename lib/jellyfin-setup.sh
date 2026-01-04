@@ -269,7 +269,7 @@ copy_rffmpeg_files() {
 
     if ask_confirm "Execute these commands now?"; then
         echo ""
-        show_info "Sudo password may be requested..."
+        show_warning ">>> Enter your SYNOLOGY password (not Mac!) <<<"
         echo ""
 
         # Step 1: Create directory

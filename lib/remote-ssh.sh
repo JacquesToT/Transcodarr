@@ -430,15 +430,15 @@ remote_create_mount_scripts() {
     local cache_path="$6"
 
     show_info "Creating NFS mount scripts on Mac..."
-    show_info "This may require your Mac password."
+    echo ""
+    show_warning ">>> Enter your MAC password multiple times when prompted <<<"
     echo ""
 
-    # Media mount script
+    # Create directory
     ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" "mkdir -p /usr/local/bin"
 
-    # Use cat with heredoc via sudo sh -c
-    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" "sh -c 'cat > /usr/local/bin/mount-nfs-media.sh << EOF
-#!/bin/bash
+    # Media mount script - use base64 to avoid escaping issues
+    local media_script="#!/bin/bash
 MOUNT_POINT=\"/data/media\"
 NFS_SHARE=\"${nas_ip}:${media_path}\"
 LOG_FILE=\"/var/log/mount-nfs-media.log\"
@@ -458,36 +458,41 @@ fi
 mkdir -p \"\$MOUNT_POINT\"
 /sbin/mount -t nfs -o resvport,rw,nolock \"\$NFS_SHARE\" \"\$MOUNT_POINT\"
 log \"NFS mounted: \$NFS_SHARE -> \$MOUNT_POINT\"
-EOF'"
+"
+    local media_b64
+    media_b64=$(echo "$media_script" | base64)
 
-    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" "chmod +x /usr/local/bin/mount-nfs-media.sh"
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
+        "sh -c \"echo '$media_b64' | base64 -d > /usr/local/bin/mount-nfs-media.sh && chmod +x /usr/local/bin/mount-nfs-media.sh\""
 
     # Cache mount script
-    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" "sh -c 'cat > /usr/local/bin/mount-synology-cache.sh << EOF
-#!/bin/bash
+    local cache_script="#!/bin/bash
 MOUNT_POINT=\"/Users/Shared/jellyfin-cache\"
 NFS_SHARE=\"${nas_ip}:${cache_path}\"
 LOG_FILE=\"/var/log/mount-synology-cache.log\"
 
-log() { echo \"\\\$(date \"+%Y-%m-%d %H:%M:%S\") - \\\$1\" >> \"\\\$LOG_FILE\"; }
+log() { echo \"\$(date '+%Y-%m-%d %H:%M:%S') - \$1\" >> \"\$LOG_FILE\"; }
 
 for i in {1..30}; do
     ping -c1 -W1 ${nas_ip} >/dev/null 2>&1 && break
     sleep 1
 done
 
-mkdir -p \"\\\$MOUNT_POINT\"
-if ! mount | grep -q \"\\\$MOUNT_POINT\"; then
-    /sbin/mount -t nfs -o resvport,rw,nolock \"\\\$NFS_SHARE\" \"\\\$MOUNT_POINT\"
+mkdir -p \"\$MOUNT_POINT\"
+if ! mount | grep -q \"\$MOUNT_POINT\"; then
+    /sbin/mount -t nfs -o resvport,rw,nolock \"\$NFS_SHARE\" \"\$MOUNT_POINT\"
     log \"Mounted Synology cache\"
 fi
 
 if [[ ! -L /config/cache ]]; then
-    ln -sf \"\\\$MOUNT_POINT\" /config/cache 2>/dev/null || true
+    ln -sf \"\$MOUNT_POINT\" /config/cache 2>/dev/null || true
 fi
-EOF'"
+"
+    local cache_b64
+    cache_b64=$(echo "$cache_script" | base64)
 
-    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" "chmod +x /usr/local/bin/mount-synology-cache.sh"
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
+        "sh -c \"echo '$cache_b64' | base64 -d > /usr/local/bin/mount-synology-cache.sh && chmod +x /usr/local/bin/mount-synology-cache.sh\""
 
     # Verify scripts were created
     if ssh_exec "$mac_user" "$mac_ip" "$key_path" "test -f /usr/local/bin/mount-nfs-media.sh && test -f /usr/local/bin/mount-synology-cache.sh"; then
@@ -504,8 +509,11 @@ remote_create_launch_daemons() {
     local key_path="$3"
 
     show_info "Creating LaunchDaemons on Mac..."
+    echo ""
+    show_warning ">>> Enter your MAC password when prompted <<<"
+    echo ""
 
-    # Media mount daemon - use printf to avoid heredoc escaping issues
+    # Media mount daemon - use base64 to avoid escaping issues
     local media_plist='<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -522,9 +530,11 @@ remote_create_launch_daemons() {
     <false/>
 </dict>
 </plist>'
+    local media_b64
+    media_b64=$(echo "$media_plist" | base64)
 
     ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
-        "printf '%s\n' '$media_plist' > /Library/LaunchDaemons/com.transcodarr.nfs-media.plist"
+        "sh -c \"echo '$media_b64' | base64 -d > /Library/LaunchDaemons/com.transcodarr.nfs-media.plist\""
 
     # Cache mount daemon
     local cache_plist='<?xml version="1.0" encoding="UTF-8"?>
@@ -543,9 +553,11 @@ remote_create_launch_daemons() {
     <false/>
 </dict>
 </plist>'
+    local cache_b64
+    cache_b64=$(echo "$cache_plist" | base64)
 
     ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
-        "printf '%s\n' '$cache_plist' > /Library/LaunchDaemons/com.transcodarr.nfs-cache.plist"
+        "sh -c \"echo '$cache_b64' | base64 -d > /Library/LaunchDaemons/com.transcodarr.nfs-cache.plist\""
 
     # Load the daemons
     ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
