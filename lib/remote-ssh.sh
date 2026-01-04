@@ -100,12 +100,13 @@ ssh_exec() {
 }
 
 # Execute a command with sudo on the Mac
+# Uses -tt to force TTY allocation even when stdin isn't a terminal (needed on Synology)
 ssh_exec_sudo() {
     local mac_user="$1"
     local mac_ip="$2"
     local key_path="$3"
     local command="$4"
-    ssh -t -o BatchMode=yes \
+    ssh -tt \
         -o ConnectTimeout=10 \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
@@ -200,11 +201,18 @@ handle_mac_reboot() {
     echo ""
     show_reboot_wait_message
 
-    show_info "Please reboot your Mac now."
-    show_info "The installer will wait for it to come back."
+    echo ""
+    show_warning "╔═══════════════════════════════════════════════════════════╗"
+    show_warning "║  ACTION REQUIRED: Reboot your Mac now!                    ║"
+    show_warning "║                                                           ║"
+    show_warning "║  On your Mac: Apple menu → Restart                        ║"
+    show_warning "║  Or run: sudo reboot                                      ║"
+    show_warning "╚═══════════════════════════════════════════════════════════╝"
+    echo ""
+    show_info "After clicking 'Yes', the installer will wait for Mac to restart."
     echo ""
 
-    if ask_confirm "Wait for Mac to reboot?"; then
+    if ask_confirm "Is the Mac rebooting? Click Yes to continue"; then
         set_state_value "reboot_in_progress" "true"
         set_state_value "reboot_mac_ip" "$mac_ip"
         set_state_value "reboot_mac_user" "$mac_user"
@@ -386,6 +394,19 @@ remote_setup_synthetic_links() {
     # Use sh -c to ensure the redirect happens with sudo privileges
     ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
         "sh -c 'printf \"data\tSystem/Volumes/Data/data\nconfig\tSystem/Volumes/Data/config\n\" > /etc/synthetic.conf'"
+
+    # Verify synthetic.conf was created
+    echo ""
+    if ssh_exec "$mac_user" "$mac_ip" "$key_path" "test -f /etc/synthetic.conf"; then
+        show_result true "synthetic.conf created"
+    else
+        show_error "Failed to create /etc/synthetic.conf"
+        show_info "Try manually on Mac: sudo nano /etc/synthetic.conf"
+        show_info "Add these lines:"
+        echo "  data    System/Volumes/Data/data"
+        echo "  config  System/Volumes/Data/config"
+        return 1
+    fi
 
     show_result true "Synthetic links configured (reboot required)"
     return 2
