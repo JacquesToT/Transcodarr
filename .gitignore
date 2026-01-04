@@ -25,6 +25,11 @@ logs/
 .env
 .env.local
 
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+
 # Node modules (for future GUI)
 node_modules/
 dist/

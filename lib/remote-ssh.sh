@@ -375,7 +375,8 @@ remote_setup_synthetic_links() {
     fi
 
     show_info "Creating synthetic links on Mac..."
-    show_info "This requires sudo on the Mac."
+    echo ""
+    show_warning ">>> Enter the MAC password for '$mac_user' (not Synology!) <<<"
     echo ""
 
     ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
