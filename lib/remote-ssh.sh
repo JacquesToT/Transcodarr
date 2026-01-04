@@ -14,22 +14,26 @@ _REMOTE_SSH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # SSH CONNECTION MANAGEMENT
 # ============================================================================
 
-# Test if Mac is reachable (try multiple methods)
+# Test if Mac is reachable by checking if SSH port responds
+# Uses SSH with short timeout - if connection is refused or times out, host is unreachable
+# If connection succeeds (even with auth failure), host is reachable
 test_mac_reachable() {
     local mac_ip="$1"
     local timeout="${2:-5}"
 
-    # Method 1: Try SSH connection test (works on Synology without sudo)
-    # This just tests if port 22 is open, doesn't need credentials
-    timeout "$timeout" bash -c "echo >/dev/tcp/$mac_ip/22" 2>/dev/null && return 0
+    # Try SSH connection - we don't care about auth, just if the port responds
+    # Exit codes: 0=success, 255=connection failed/timeout, other=auth failed (but connected!)
+    ssh -o BatchMode=yes \
+        -o ConnectTimeout="$timeout" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        "nobody@${mac_ip}" "exit" 2>/dev/null
 
-    # Method 2: Try ping (may need sudo on Synology)
-    ping -c1 -W"$timeout" "$mac_ip" &>/dev/null && return 0
+    local exit_code=$?
 
-    # Method 3: Try with timeout command prefix for ping
-    timeout "$timeout" ping -c1 "$mac_ip" &>/dev/null && return 0
-
-    return 1
+    # 255 = connection failed (unreachable)
+    # Anything else (including auth failures) = host is reachable
+    [[ $exit_code -ne 255 ]]
 }
 
 # Test if SSH port is open on Mac
