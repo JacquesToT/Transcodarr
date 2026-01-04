@@ -179,21 +179,32 @@ step_register_rffmpeg() {
 
     show_info "Adding Mac to rffmpeg configuration..."
 
+    # Calculate weight based on existing nodes
+    # First node = weight 2, second = weight 3, etc.
+    local weight=2
+    local node_count=0
+
     if docker ps 2>/dev/null | grep -q jellyfin; then
+        # Count existing nodes from rffmpeg status
+        node_count=$(docker exec jellyfin rffmpeg status 2>/dev/null | grep -c "^  [0-9]" || echo "0")
+        weight=$((2 + node_count))
+
+        show_info "Found $node_count existing node(s), using weight $weight for new node"
+
         if ask_confirm "Add Mac to rffmpeg now?"; then
-            if docker exec jellyfin rffmpeg add "$MAC_IP" --weight 2 2>/dev/null; then
-                show_result true "Mac added to rffmpeg"
+            if docker exec jellyfin rffmpeg add "$MAC_IP" --weight "$weight" 2>/dev/null; then
+                show_result true "Mac added to rffmpeg with weight $weight"
                 echo ""
                 docker exec jellyfin rffmpeg status 2>/dev/null || true
             else
                 show_warning "Could not add Mac - try manually"
                 echo ""
-                show_info "Run: docker exec jellyfin rffmpeg add $MAC_IP --weight 2"
+                show_info "Run: docker exec jellyfin rffmpeg add $MAC_IP --weight $weight"
             fi
         fi
     else
         show_info "Add Mac to rffmpeg with:"
-        echo -e "  ${GREEN}docker exec jellyfin rffmpeg add $MAC_IP --weight 2${NC}"
+        echo -e "  ${GREEN}docker exec jellyfin rffmpeg add $MAC_IP --weight $weight${NC}"
     fi
 }
 
