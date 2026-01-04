@@ -15,25 +15,29 @@ _REMOTE_SSH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ============================================================================
 
 # Test if Mac is reachable by checking if SSH port responds
-# Uses SSH with short timeout - if connection is refused or times out, host is unreachable
-# If connection succeeds (even with auth failure), host is reachable
+# Checks the SSH output for signs of connectivity
 test_mac_reachable() {
     local mac_ip="$1"
     local timeout="${2:-5}"
 
-    # Try SSH connection - we don't care about auth, just if the port responds
-    # Exit codes: 0=success, 255=connection failed/timeout, other=auth failed (but connected!)
-    ssh -o BatchMode=yes \
+    # Try SSH connection and capture stderr
+    local output
+    output=$(ssh -o BatchMode=yes \
         -o ConnectTimeout="$timeout" \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
-        "nobody@${mac_ip}" "exit" 2>/dev/null
+        "nobody@${mac_ip}" "exit" 2>&1)
 
-    local exit_code=$?
-
-    # 255 = connection failed (unreachable)
-    # Anything else (including auth failures) = host is reachable
-    [[ $exit_code -ne 255 ]]
+    # If we get "Permission denied" or "publickey" - host IS reachable (SSH responded)
+    # If we get "Connection refused" - host reachable but SSH not running
+    # If we get "timed out" or "No route" - host NOT reachable
+    if echo "$output" | grep -qi "permission denied\|publickey\|password"; then
+        return 0  # Reachable - got auth error means SSH is responding
+    elif echo "$output" | grep -qi "connection refused"; then
+        return 1  # Reachable but SSH not enabled
+    else
+        return 1  # Not reachable
+    fi
 }
 
 # Test if SSH port is open on Mac
