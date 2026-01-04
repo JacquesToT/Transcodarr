@@ -14,11 +14,22 @@ _REMOTE_SSH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # SSH CONNECTION MANAGEMENT
 # ============================================================================
 
-# Test if Mac is reachable via ping
+# Test if Mac is reachable (try multiple methods)
 test_mac_reachable() {
     local mac_ip="$1"
     local timeout="${2:-5}"
-    ping -c1 -W"$timeout" "$mac_ip" &>/dev/null
+
+    # Method 1: Try SSH connection test (works on Synology without sudo)
+    # This just tests if port 22 is open, doesn't need credentials
+    timeout "$timeout" bash -c "echo >/dev/tcp/$mac_ip/22" 2>/dev/null && return 0
+
+    # Method 2: Try ping (may need sudo on Synology)
+    ping -c1 -W"$timeout" "$mac_ip" &>/dev/null && return 0
+
+    # Method 3: Try with timeout command prefix for ping
+    timeout "$timeout" ping -c1 "$mac_ip" &>/dev/null && return 0
+
+    return 1
 }
 
 # Test if SSH port is open on Mac
