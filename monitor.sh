@@ -7,6 +7,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/.venv"
 
 # Colors
 RED='\033[0;31m'
@@ -20,7 +21,6 @@ check_python() {
         echo "python3"
         return 0
     elif command -v python &> /dev/null; then
-        # Check if it's Python 3
         if python --version 2>&1 | grep -q "Python 3"; then
             echo "python"
             return 0
@@ -29,28 +29,25 @@ check_python() {
     return 1
 }
 
-# Install dependencies
-install_deps() {
+# Setup virtual environment
+setup_venv() {
     local python_cmd="$1"
 
-    echo -e "${YELLOW}Installing dependencies...${NC}"
-
-    # Use pip to install requirements
-    if command -v pip3 &> /dev/null; then
-        pip3 install -q -r "$SCRIPT_DIR/monitor/requirements.txt"
-    elif command -v pip &> /dev/null; then
-        pip install -q -r "$SCRIPT_DIR/monitor/requirements.txt"
-    else
-        "$python_cmd" -m pip install -q -r "$SCRIPT_DIR/monitor/requirements.txt"
+    if [[ ! -d "$VENV_DIR" ]]; then
+        echo -e "${YELLOW}Creating virtual environment...${NC}"
+        "$python_cmd" -m venv "$VENV_DIR"
     fi
 
-    echo -e "${GREEN}Dependencies installed!${NC}"
-}
+    # Activate venv
+    source "$VENV_DIR/bin/activate"
 
-# Check if textual is installed
-check_textual() {
-    local python_cmd="$1"
-    "$python_cmd" -c "import textual" 2>/dev/null
+    # Install/update dependencies if needed
+    if ! python -c "import textual" 2>/dev/null; then
+        echo -e "${YELLOW}Installing dependencies...${NC}"
+        pip install -q --upgrade pip
+        pip install -q -r "$SCRIPT_DIR/monitor/requirements.txt"
+        echo -e "${GREEN}Dependencies installed!${NC}"
+    fi
 }
 
 main() {
@@ -64,14 +61,12 @@ main() {
         exit 1
     fi
 
-    # Check/install dependencies
-    if ! check_textual "$PYTHON_CMD"; then
-        install_deps "$PYTHON_CMD"
-    fi
+    # Setup and activate virtual environment
+    setup_venv "$PYTHON_CMD"
 
-    # Run the monitor
+    # Run the monitor from the venv
     cd "$SCRIPT_DIR"
-    "$PYTHON_CMD" -m monitor "$@"
+    python -m monitor "$@"
 }
 
 main "$@"
