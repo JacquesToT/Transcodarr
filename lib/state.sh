@@ -211,6 +211,42 @@ get_completed_steps() {
     fi
 }
 
+# Clear/remove a state value
+# Usage: clear_state_value "reboot_in_progress"
+clear_state_value() {
+    local key="$1"
+
+    if ! state_exists; then
+        return 0
+    fi
+
+    # Remove the key from the state file
+    # This is a simplified approach - removes the line containing the key
+    sed -i.bak "/\"$key\":/d" "$STATE_FILE"
+    rm -f "${STATE_FILE}.bak"
+
+    # Clean up any trailing commas that might be left
+    sed -i.bak 's/,\([[:space:]]*\)}/\1}/' "$STATE_FILE"
+    rm -f "${STATE_FILE}.bak"
+}
+
+# Get resume state for interrupted installations
+# Returns: "none", "waiting_for_reboot", "post_reboot"
+get_resume_state() {
+    if ! state_exists; then
+        echo "none"
+        return
+    fi
+
+    if get_state_bool "reboot_in_progress"; then
+        echo "waiting_for_reboot"
+    elif is_step_complete "synthetic_links" && ! is_step_complete "nfs_verified"; then
+        echo "post_reboot"
+    else
+        echo "none"
+    fi
+}
+
 # Reset state (for testing or starting over)
 reset_state() {
     rm -f "$STATE_FILE"

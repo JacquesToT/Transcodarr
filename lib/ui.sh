@@ -375,6 +375,107 @@ show_remote_login_instructions() {
 }
 
 # ============================================================================
+# EMBEDDED INSTRUCTIONS - SSH PASSWORD PROMPT (for remote installer)
+# ============================================================================
+
+show_ssh_password_prompt() {
+    local mac_user="${1:-<MAC_USER>}"
+    local mac_ip="${2:-<MAC_IP>}"
+
+    if command -v gum &> /dev/null; then
+        gum style \
+            --foreground 226 \
+            --border-foreground 226 \
+            --border normal \
+            --padding "1 2" \
+            --width 65 \
+            "SSH Key Installation"
+    else
+        echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${YELLOW}║  SSH Key Installation                                        ║${NC}"
+        echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
+    fi
+    echo ""
+
+    echo -e "  ${YELLOW}You will be asked for a password.${NC}"
+    echo ""
+    echo -e "  ${GREEN}Enter your MAC password${NC}"
+    echo -e "  (the one you use to log into your Mac at ${CYAN}$mac_ip${NC})"
+    echo ""
+    echo -e "  ${RED}This is NOT your Synology password!${NC}"
+    echo ""
+    echo "  After this, SSH will work without a password."
+    echo ""
+}
+
+# ============================================================================
+# EMBEDDED INSTRUCTIONS - REBOOT WAIT (for remote installer)
+# ============================================================================
+
+show_reboot_wait_message() {
+    echo ""
+    if command -v gum &> /dev/null; then
+        gum style \
+            --foreground 226 \
+            --border-foreground 226 \
+            --border double \
+            --padding "1 2" \
+            --width 65 \
+            "MAC REBOOT REQUIRED"
+    else
+        echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${YELLOW}║  MAC REBOOT REQUIRED                                         ║${NC}"
+        echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
+    fi
+    echo ""
+
+    echo "  The Mac needs to restart for synthetic links to take effect."
+    echo "  (/data and /config mount points)"
+    echo ""
+    echo "  What happens next:"
+    echo "    1. You reboot your Mac (manually or via the menu)"
+    echo "    2. This installer waits for the Mac to come back"
+    echo "    3. Setup continues automatically when Mac is online"
+    echo ""
+}
+
+# ============================================================================
+# EMBEDDED INSTRUCTIONS - COMPLETE SUCCESS (for remote installer)
+# ============================================================================
+
+show_remote_install_complete() {
+    local mac_ip="${1:-<MAC_IP>}"
+    local mac_user="${2:-<MAC_USER>}"
+
+    echo ""
+    if command -v gum &> /dev/null; then
+        gum style \
+            --foreground 46 \
+            --border-foreground 46 \
+            --border double \
+            --padding "1 2" \
+            --width 65 \
+            "INSTALLATION COMPLETE!"
+    else
+        echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${GREEN}║  INSTALLATION COMPLETE!                                       ║${NC}"
+        echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+    fi
+    echo ""
+
+    echo "  Your Mac ($mac_user@$mac_ip) is ready to transcode!"
+    echo ""
+    echo "  Summary:"
+    echo "    [x] Homebrew installed"
+    echo "    [x] FFmpeg with VideoToolbox installed"
+    echo "    [x] Synthetic links created (/data, /config)"
+    echo "    [x] NFS mount scripts installed"
+    echo "    [x] LaunchDaemons configured"
+    echo "    [x] Energy settings optimized"
+    echo ""
+}
+
+# ============================================================================
 # EMBEDDED INSTRUCTIONS - REBOOT
 # ============================================================================
 

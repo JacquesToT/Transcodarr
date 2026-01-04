@@ -9,7 +9,8 @@
 set +e  # Don't exit on error, we handle errors ourselves
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="2.0.0"
+VERSION="3.0.0"
+OUTPUT_DIR="$SCRIPT_DIR/output"
 
 # Source library modules
 source "$SCRIPT_DIR/lib/state.sh"
@@ -17,6 +18,7 @@ source "$SCRIPT_DIR/lib/detection.sh"
 source "$SCRIPT_DIR/lib/ui.sh"
 source "$SCRIPT_DIR/lib/mac-setup.sh"
 source "$SCRIPT_DIR/lib/jellyfin-setup.sh"
+source "$SCRIPT_DIR/lib/remote-ssh.sh"
 
 # ============================================================================
 # HOMEBREW & GUM SETUP
@@ -96,15 +98,65 @@ wizard_synology() {
     local mac_ip=""
     local mac_user=""
     local nas_ip=""
+    local media_path=""
     local cache_path=""
     local jellyfin_config=""
+    local key_path=""
 
-    # Step 1: NFS Setup
-    show_step 1 5 "Configure NFS"
+    # Check for interrupted installation (waiting for Mac reboot)
+    local resume_state
+    resume_state=$(get_resume_state)
 
-    # Check if NFS is already enabled
+    if [[ "$resume_state" == "waiting_for_reboot" ]]; then
+        show_info "Resuming after Mac reboot..."
+        mac_ip=$(get_config "mac_ip")
+        mac_user=$(get_config "mac_user")
+        nas_ip=$(get_config "nas_ip")
+        media_path=$(get_config "media_path")
+        cache_path=$(get_config "cache_path")
+        jellyfin_config=$(get_config "jellyfin_config")
+        key_path="${OUTPUT_DIR}/rffmpeg/.ssh/id_rsa"
+
+        # Wait for Mac to come back
+        if wait_for_mac_up "$mac_user" "$mac_ip" "$key_path" 300; then
+            clear_state_value "reboot_in_progress"
+            show_result true "Mac is back online!"
+
+            # Verify synthetic links after reboot
+            if ! remote_check_synthetic_links "$mac_user" "$mac_ip" "$key_path"; then
+                show_error "Synthetic links not found after reboot"
+                show_info "Try rebooting your Mac again"
+                return 1
+            fi
+            show_result true "/data and /config are now available"
+
+            # Jump to post-reboot steps
+            show_step 7 8 "Configure NFS Mounts"
+            remote_create_mount_scripts "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path" "$cache_path"
+            remote_create_launch_daemons "$mac_user" "$mac_ip" "$key_path"
+            remote_configure_energy "$mac_user" "$mac_ip" "$key_path"
+
+            show_step 8 8 "Verify and Complete"
+            remote_verify_nfs "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path"
+
+            mark_step_complete "nfs_verified"
+
+            # Show completion and DOCKER_MODS instructions
+            show_remote_install_complete "$mac_ip" "$mac_user"
+            show_docker_mods_instructions "$mac_ip"
+            return 0
+        else
+            show_error "Mac did not come back online"
+            show_info "Check your Mac and re-run the installer"
+            return 1
+        fi
+    fi
+
+    # Step 1: NFS Setup (prerequisite check)
+    show_step 1 8 "Verify NFS Prerequisites"
+
     if is_nfs_enabled; then
-        show_skip "NFS service is already active"
+        show_result true "NFS service is active"
         show_info "Make sure your media and cache folders have NFS permissions."
         echo ""
         if ! ask_confirm "Are NFS permissions already configured?"; then
@@ -112,7 +164,7 @@ wizard_synology() {
             wait_for_user "Have you configured the NFS permissions?"
         fi
     else
-        show_warning "NFS is not yet enabled on this Synology!"
+        show_warning "NFS is not enabled on this Synology!"
         echo ""
         show_nfs_instructions
         wait_for_user "Have you enabled NFS and configured the permissions?"
@@ -120,10 +172,10 @@ wizard_synology() {
     mark_step_complete "nfs_setup"
 
     # Step 2: Collect configuration
-    show_step 2 5 "Collect Configuration"
+    show_step 2 8 "Collect Configuration"
 
     echo ""
-    show_what_this_does "We need some information about your Mac and your NAS."
+    show_what_this_does "We need information about your Mac and your NAS to set up remote transcoding."
     echo ""
 
     # Get Mac IP
@@ -131,17 +183,6 @@ wizard_synology() {
     if [[ -z "$mac_ip" ]]; then
         show_error "Mac IP is required"
         return 1
-    fi
-
-    # Validate Mac IP
-    show_info "Checking if Mac is reachable..."
-    if ! ping -c1 -W2 "$mac_ip" &>/dev/null; then
-        show_warning "Mac at $mac_ip is not reachable. Check the IP address."
-        if ! ask_confirm "Continue anyway?"; then
-            return 1
-        fi
-    else
-        show_result true "Mac reachable at $mac_ip"
     fi
 
     # Get Mac username
@@ -157,18 +198,22 @@ wizard_synology() {
     [[ -z "$detected_nas_ip" ]] && detected_nas_ip="192.168.1.100"
     nas_ip=$(ask_input "NAS IP address" "$detected_nas_ip")
 
+    # Get media path (for NFS mount)
+    media_path=$(ask_input "Media folder on NAS (NFS export)" "/volume1/data/media")
+
     # Get Jellyfin config path
     local detected_config
     detected_config=$(detect_jellyfin_config)
     jellyfin_config=$(ask_input "Jellyfin config folder" "$detected_config")
 
     # Get cache path
-    cache_path=$(ask_input "Transcode cache folder" "${jellyfin_config}/cache")
+    cache_path=$(ask_input "Transcode cache folder (NFS export)" "${jellyfin_config}/cache")
 
     echo ""
-    show_info "Configuration:"
+    show_info "Configuration summary:"
     echo "  Mac:           $mac_user@$mac_ip"
     echo "  NAS:           $nas_ip"
+    echo "  Media path:    $media_path"
     echo "  Jellyfin:      $jellyfin_config"
     echo "  Cache:         $cache_path"
     echo ""
@@ -178,26 +223,144 @@ wizard_synology() {
         return 1
     fi
 
+    # Save config to state for resume capability
+    set_config "mac_ip" "$mac_ip"
+    set_config "mac_user" "$mac_user"
+    set_config "nas_ip" "$nas_ip"
+    set_config "media_path" "$media_path"
+    set_config "cache_path" "$cache_path"
+    set_config "jellyfin_config" "$jellyfin_config"
     mark_step_complete "config_collected"
 
-    # Step 3: Generate SSH key and config files
-    show_step 3 5 "Generate Configuration"
-    run_jellyfin_setup "$mac_ip" "$mac_user" "$nas_ip" "$cache_path" "$jellyfin_config"
+    # Step 3: Verify Mac is reachable
+    show_step 3 8 "Connect to Mac"
 
-    # Steps 4-5 are handled inside run_jellyfin_setup (SSH key install, copy instructions)
+    show_info "Checking if Mac is reachable..."
+    if ! test_mac_reachable "$mac_ip"; then
+        show_error "Mac at $mac_ip is not reachable"
+        show_info "Check the IP address and try again"
+        return 1
+    fi
+    show_result true "Mac reachable at $mac_ip"
+
+    # Check SSH port
+    show_info "Checking if SSH is enabled on Mac..."
+    if ! test_ssh_port "$mac_ip"; then
+        show_warning "SSH port not open on Mac"
+        show_remote_login_instructions
+        wait_for_user "Have you enabled Remote Login on Mac?"
+    fi
+    show_result true "SSH port is open"
+
+    # Step 4: Generate and install SSH key
+    show_step 4 8 "Setup SSH Key"
+
+    # Generate SSH key if needed
+    key_path="${OUTPUT_DIR}/rffmpeg/.ssh/id_rsa"
+    if [[ ! -f "$key_path" ]]; then
+        show_info "Generating SSH key..."
+        generate_ssh_key
+    else
+        show_skip "SSH key already exists"
+    fi
+
+    # Test if key auth already works
+    if test_ssh_key_auth "$mac_user" "$mac_ip" "$key_path"; then
+        show_skip "SSH key authentication already working"
+    else
+        # Install SSH key (requires password)
+        if ! install_ssh_key_interactive "$mac_user" "$mac_ip" "${key_path}.pub"; then
+            show_error "Failed to install SSH key"
+            show_info "Make sure you entered the correct Mac password"
+            return 1
+        fi
+
+        # Verify key works now
+        sleep 1
+        if ! test_ssh_key_auth "$mac_user" "$mac_ip" "$key_path"; then
+            show_error "SSH key authentication still not working"
+            return 1
+        fi
+    fi
+    show_result true "SSH key authentication working"
+    mark_step_complete "ssh_key_installed"
+
+    # Step 5: Remote Mac Setup (pre-reboot)
+    show_step 5 8 "Setup Mac Software (Remote)"
+
+    show_info "Installing software on Mac via SSH..."
+    echo ""
+
+    remote_install_homebrew "$mac_user" "$mac_ip" "$key_path"
+    echo ""
+
+    remote_install_ffmpeg "$mac_user" "$mac_ip" "$key_path"
+    echo ""
+
+    # Step 6: Synthetic links (may require reboot)
+    show_step 6 8 "Create Mount Points"
+
+    local synth_result
+    remote_setup_synthetic_links "$mac_user" "$mac_ip" "$key_path"
+    synth_result=$?
+
+    if [[ $synth_result -eq 2 ]]; then
+        # Needs reboot
+        mark_step_complete "synthetic_links"
+
+        if handle_mac_reboot "$mac_user" "$mac_ip" "$key_path"; then
+            # Mac is back, verify synthetic links
+            if ! remote_check_synthetic_links "$mac_user" "$mac_ip" "$key_path"; then
+                show_error "Synthetic links not found after reboot"
+                return 1
+            fi
+            show_result true "/data and /config are now available"
+        else
+            # User chose to handle manually or Mac didn't come back
+            show_info "Re-run this installer when Mac is back online"
+            return 0
+        fi
+    fi
+
+    # Step 7: Remote Mac Setup (post-reboot)
+    show_step 7 8 "Configure NFS Mounts"
+
+    remote_create_mount_scripts "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path" "$cache_path"
+    remote_create_launch_daemons "$mac_user" "$mac_ip" "$key_path"
+    remote_configure_energy "$mac_user" "$mac_ip" "$key_path"
+
+    # Step 8: Verify and finalize
+    show_step 8 8 "Verify and Complete"
+
+    remote_verify_nfs "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path"
+    mark_step_complete "nfs_verified"
+
+    # Copy rffmpeg config to Jellyfin
+    show_info "Setting up rffmpeg configuration..."
+    create_rffmpeg_config "$mac_ip" "$mac_user"
+    copy_rffmpeg_files "$jellyfin_config"
+
+    # Show completion
+    echo ""
+    show_remote_install_complete "$mac_ip" "$mac_user"
+    show_docker_mods_instructions "$mac_ip"
+
+    # Offer to add Mac to rffmpeg if container is running
+    if docker ps 2>/dev/null | grep -q jellyfin; then
+        echo ""
+        if ask_confirm "Add Mac to rffmpeg now? (Jellyfin must have DOCKER_MODS enabled)"; then
+            if docker exec jellyfin rffmpeg add "$mac_ip" --weight 2 2>/dev/null; then
+                show_result true "Mac added to rffmpeg"
+                docker exec jellyfin rffmpeg status 2>/dev/null || true
+            else
+                show_warning "Could not add Mac - make sure DOCKER_MODS is configured"
+                show_info "After configuring, run: docker exec jellyfin rffmpeg add $mac_ip --weight 2"
+            fi
+        fi
+    fi
 
     echo ""
-    show_result true "Synology setup complete!"
-    echo ""
-    show_info "Now go to your Mac and open Terminal:"
-    echo ""
-    echo "  1. If you don't have Git, install Xcode Command Line Tools:"
-    echo -e "     ${GREEN}xcode-select --install${NC}"
-    echo ""
-    echo "  2. Clone and start the installer:"
-    echo -e "     ${GREEN}git clone https://github.com/JacquesToT/Transcodarr.git ~/Transcodarr${NC}"
-    echo -e "     ${GREEN}cd ~/Transcodarr && ./install.sh${NC}"
-    echo ""
+    show_result true "Installation complete!"
 }
 
 # ============================================================================
@@ -321,19 +484,110 @@ wizard_mac() {
 # ============================================================================
 
 wizard_add_node_synology() {
-    show_step 1 2 "Add New Mac"
+    local mac_ip=""
+    local mac_user=""
+    local key_path=""
 
-    local mac_ip
-    local mac_user
+    # Get existing config
+    local nas_ip
+    local media_path
+    local cache_path
+    nas_ip=$(get_config "nas_ip")
+    media_path=$(get_config "media_path")
+    cache_path=$(get_config "cache_path")
+
+    # Use existing SSH key
+    key_path="${OUTPUT_DIR}/rffmpeg/.ssh/id_rsa"
+    if [[ ! -f "$key_path" ]]; then
+        show_error "No SSH key found from previous installation"
+        show_info "Run the first-time setup first"
+        return 1
+    fi
+
+    show_step 1 4 "Add New Mac"
 
     mac_ip=$(ask_input "New Mac IP address" "192.168.1.51")
     mac_user=$(ask_input "Mac username" "$(whoami)")
 
-    show_step 2 2 "Install SSH Key"
-    run_add_node_setup "$mac_ip" "$mac_user"
+    # Verify Mac is reachable
+    show_step 2 4 "Connect to Mac"
+
+    if ! test_mac_reachable "$mac_ip"; then
+        show_error "Mac at $mac_ip is not reachable"
+        return 1
+    fi
+    show_result true "Mac reachable"
+
+    if ! test_ssh_port "$mac_ip"; then
+        show_warning "SSH port not open on Mac"
+        show_remote_login_instructions
+        wait_for_user "Have you enabled Remote Login on Mac?"
+    fi
+
+    # Install SSH key on new Mac
+    if test_ssh_key_auth "$mac_user" "$mac_ip" "$key_path"; then
+        show_skip "SSH key authentication already working"
+    else
+        install_ssh_key_interactive "$mac_user" "$mac_ip" "${key_path}.pub"
+
+        sleep 1
+        if ! test_ssh_key_auth "$mac_user" "$mac_ip" "$key_path"; then
+            show_error "SSH key authentication failed"
+            return 1
+        fi
+    fi
+    show_result true "SSH key installed"
+
+    # Remote setup on new Mac
+    show_step 3 4 "Setup Mac (Remote)"
+
+    remote_install_homebrew "$mac_user" "$mac_ip" "$key_path"
+    remote_install_ffmpeg "$mac_user" "$mac_ip" "$key_path"
+
+    local synth_result
+    remote_setup_synthetic_links "$mac_user" "$mac_ip" "$key_path"
+    synth_result=$?
+
+    if [[ $synth_result -eq 2 ]]; then
+        if handle_mac_reboot "$mac_user" "$mac_ip" "$key_path"; then
+            if ! remote_check_synthetic_links "$mac_user" "$mac_ip" "$key_path"; then
+                show_error "Synthetic links not found after reboot"
+                return 1
+            fi
+        else
+            show_info "Re-run this installer when Mac is back online"
+            return 0
+        fi
+    fi
+
+    remote_create_mount_scripts "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path" "$cache_path"
+    remote_create_launch_daemons "$mac_user" "$mac_ip" "$key_path"
+    remote_configure_energy "$mac_user" "$mac_ip" "$key_path"
+    remote_verify_nfs "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path"
+
+    # Add to rffmpeg config
+    show_step 4 4 "Register Mac"
+
+    # Update rffmpeg.yml to include new Mac
+    show_info "Adding Mac to rffmpeg configuration..."
+
+    if docker ps 2>/dev/null | grep -q jellyfin; then
+        if ask_confirm "Add Mac to rffmpeg now?"; then
+            if docker exec jellyfin rffmpeg add "$mac_ip" --weight 2 2>/dev/null; then
+                show_result true "Mac added to rffmpeg"
+                docker exec jellyfin rffmpeg status 2>/dev/null || true
+            else
+                show_warning "Could not add Mac - try manually"
+                show_info "Run: docker exec jellyfin rffmpeg add $mac_ip --weight 2"
+            fi
+        fi
+    else
+        show_info "Add Mac to rffmpeg with:"
+        echo -e "  ${GREEN}docker exec jellyfin rffmpeg add $mac_ip --weight 2${NC}"
+    fi
 
     echo ""
-    show_result true "Node configuration complete!"
+    show_result true "New Mac added successfully!"
 }
 
 wizard_add_node_mac() {
@@ -403,20 +657,56 @@ wizard_add_node_mac() {
 # ============================================================================
 
 main() {
+    # Check if running on Mac - redirect to Synology
+    if is_mac; then
+        echo ""
+        echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${YELLOW}║  This installer now runs from your Synology NAS!             ║${NC}"
+        echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo "  The installer will set up your Mac automatically via SSH."
+        echo ""
+        echo "  To install Transcodarr:"
+        echo ""
+        echo "    1. SSH into your Synology:"
+        echo -e "       ${GREEN}ssh your-username@your-synology-ip${NC}"
+        echo ""
+        echo "    2. Run the installer:"
+        echo -e "       ${GREEN}git clone https://github.com/JacquesToT/Transcodarr.git ~/Transcodarr${NC}"
+        echo -e "       ${GREEN}cd ~/Transcodarr && ./install.sh${NC}"
+        echo ""
+        echo "  The installer will connect to your Mac and set everything up."
+        echo ""
+        exit 0
+    fi
+
+    # Must be Synology from here
+    if ! is_synology; then
+        show_error "This installer only works on Synology NAS."
+        show_info "Run this on your Synology, not your computer."
+        exit 1
+    fi
+
     # Ensure gum is available
     check_and_install_gum
 
     # Show banner
     show_banner "$VERSION"
 
-    # Detect system
-    local system_type
-    system_type=$(get_system_type)
-    local system_name
-    system_name=$(get_system_name)
-
     echo ""
-    show_info "Detected system: $system_name"
+    show_info "Detected system: Synology NAS"
+
+    # Check for resume state first
+    local resume_state
+    resume_state=$(get_resume_state)
+
+    if [[ "$resume_state" == "waiting_for_reboot" ]]; then
+        show_info "Resuming installation (waiting for Mac reboot)..."
+        echo ""
+        wizard_synology
+        echo ""
+        return
+    fi
 
     # Detect install status
     local install_status
@@ -426,15 +716,6 @@ main() {
         "first_time")
             show_info "This looks like a first-time installation."
             ;;
-        "adding_node")
-            show_info "FFmpeg is installed, SSH key is still missing."
-            ;;
-        "partial")
-            show_info "Partial installation detected."
-            ;;
-        "fully_configured")
-            show_info "System appears to be fully configured."
-            ;;
         "configured")
             show_info "rffmpeg is already configured."
             ;;
@@ -443,65 +724,30 @@ main() {
     echo ""
 
     # Route to appropriate wizard
-    if is_synology; then
-        case "$install_status" in
-            "first_time")
-                if ask_confirm "Start first-time setup?"; then
-                    wizard_synology
-                fi
-                ;;
-            "configured")
-                if ask_confirm "Add a new Mac node?"; then
-                    wizard_add_node_synology
-                else
-                    show_info "Use the following commands to manage nodes:"
-                    echo ""
-                    echo "  docker exec jellyfin rffmpeg status"
-                    echo "  docker exec jellyfin rffmpeg add <IP> --weight 2"
-                    echo "  docker exec jellyfin rffmpeg remove <IP>"
-                fi
-                ;;
-        esac
-    elif is_mac; then
-        case "$install_status" in
-            "first_time")
-                if ask_confirm "Start Mac setup?"; then
-                    wizard_mac
-                fi
-                ;;
-            "adding_node")
-                if ask_confirm "Add this Mac as a node?"; then
-                    wizard_add_node_mac
-                fi
-                ;;
-            "partial")
-                show_info "Partial installation detected."
-                if is_reboot_pending; then
-                    if ask_confirm "Continue after reboot?"; then
-                        wizard_mac
-                    fi
-                else
-                    if ask_confirm "Complete setup?"; then
-                        wizard_mac
-                    fi
-                fi
-                ;;
-            "fully_configured")
-                show_info "This Mac is already fully configured."
-                local mac_ip
-                mac_ip=$(ipconfig getifaddr en0 2>/dev/null || echo "<MAC_IP>")
+    case "$install_status" in
+        "first_time")
+            if ask_confirm "Start first-time setup?"; then
+                wizard_synology
+            fi
+            ;;
+        "configured")
+            if ask_confirm "Add a new Mac node?"; then
+                wizard_add_node_synology
+            else
+                show_info "Use the following commands to manage nodes:"
                 echo ""
-                echo "  Add this Mac to rffmpeg:"
-                echo -e "  ${GREEN}docker exec jellyfin rffmpeg add $mac_ip --weight 2${NC}"
-                echo ""
-                echo "  Or run the uninstaller:"
-                echo -e "  ${GREEN}./uninstall.sh${NC}"
-                ;;
-        esac
-    else
-        show_error "Unknown system. This installer only works on Synology and macOS."
-        exit 1
-    fi
+                echo "  docker exec jellyfin rffmpeg status"
+                echo "  docker exec jellyfin rffmpeg add <IP> --weight 2"
+                echo "  docker exec jellyfin rffmpeg remove <IP>"
+            fi
+            ;;
+        *)
+            # Partial or other state - try to continue
+            if ask_confirm "Continue setup?"; then
+                wizard_synology
+            fi
+            ;;
+    esac
 
     echo ""
 }
