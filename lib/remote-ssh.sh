@@ -430,11 +430,14 @@ remote_create_mount_scripts() {
     local cache_path="$6"
 
     show_info "Creating NFS mount scripts on Mac..."
+    show_info "This may require your Mac password."
+    echo ""
 
     # Media mount script
-    ssh_exec "$mac_user" "$mac_ip" "$key_path" "sudo mkdir -p /usr/local/bin"
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" "mkdir -p /usr/local/bin"
 
-    ssh_exec "$mac_user" "$mac_ip" "$key_path" "sudo tee /usr/local/bin/mount-nfs-media.sh > /dev/null << 'EOF'
+    # Use cat with heredoc via sudo sh -c
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" "sh -c 'cat > /usr/local/bin/mount-nfs-media.sh << EOF
 #!/bin/bash
 MOUNT_POINT=\"/data/media\"
 NFS_SHARE=\"${nas_ip}:${media_path}\"
@@ -455,38 +458,44 @@ fi
 mkdir -p \"\$MOUNT_POINT\"
 /sbin/mount -t nfs -o resvport,rw,nolock \"\$NFS_SHARE\" \"\$MOUNT_POINT\"
 log \"NFS mounted: \$NFS_SHARE -> \$MOUNT_POINT\"
-EOF"
+EOF'"
 
-    ssh_exec "$mac_user" "$mac_ip" "$key_path" "sudo chmod +x /usr/local/bin/mount-nfs-media.sh"
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" "chmod +x /usr/local/bin/mount-nfs-media.sh"
 
     # Cache mount script
-    ssh_exec "$mac_user" "$mac_ip" "$key_path" "sudo tee /usr/local/bin/mount-synology-cache.sh > /dev/null << 'EOF'
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" "sh -c 'cat > /usr/local/bin/mount-synology-cache.sh << EOF
 #!/bin/bash
 MOUNT_POINT=\"/Users/Shared/jellyfin-cache\"
 NFS_SHARE=\"${nas_ip}:${cache_path}\"
 LOG_FILE=\"/var/log/mount-synology-cache.log\"
 
-log() { echo \"\$(date '+%Y-%m-%d %H:%M:%S') - \$1\" >> \"\$LOG_FILE\"; }
+log() { echo \"\\\$(date \"+%Y-%m-%d %H:%M:%S\") - \\\$1\" >> \"\\\$LOG_FILE\"; }
 
 for i in {1..30}; do
     ping -c1 -W1 ${nas_ip} >/dev/null 2>&1 && break
     sleep 1
 done
 
-mkdir -p \"\$MOUNT_POINT\"
-if ! mount | grep -q \"\$MOUNT_POINT\"; then
-    /sbin/mount -t nfs -o resvport,rw,nolock \"\$NFS_SHARE\" \"\$MOUNT_POINT\"
+mkdir -p \"\\\$MOUNT_POINT\"
+if ! mount | grep -q \"\\\$MOUNT_POINT\"; then
+    /sbin/mount -t nfs -o resvport,rw,nolock \"\\\$NFS_SHARE\" \"\\\$MOUNT_POINT\"
     log \"Mounted Synology cache\"
 fi
 
 if [[ ! -L /config/cache ]]; then
-    ln -sf \"\$MOUNT_POINT\" /config/cache 2>/dev/null || true
+    ln -sf \"\\\$MOUNT_POINT\" /config/cache 2>/dev/null || true
 fi
-EOF"
+EOF'"
 
-    ssh_exec "$mac_user" "$mac_ip" "$key_path" "sudo chmod +x /usr/local/bin/mount-synology-cache.sh"
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" "chmod +x /usr/local/bin/mount-synology-cache.sh"
 
-    show_result true "Mount scripts created"
+    # Verify scripts were created
+    if ssh_exec "$mac_user" "$mac_ip" "$key_path" "test -f /usr/local/bin/mount-nfs-media.sh && test -f /usr/local/bin/mount-synology-cache.sh"; then
+        show_result true "Mount scripts created"
+    else
+        show_error "Failed to create mount scripts"
+        return 1
+    fi
 }
 
 remote_create_launch_daemons() {
@@ -496,9 +505,8 @@ remote_create_launch_daemons() {
 
     show_info "Creating LaunchDaemons on Mac..."
 
-    # Media mount daemon
-    ssh_exec "$mac_user" "$mac_ip" "$key_path" 'sudo tee /Library/LaunchDaemons/com.transcodarr.nfs-media.plist > /dev/null << '\''EOF'\''
-<?xml version="1.0" encoding="UTF-8"?>
+    # Media mount daemon - use printf to avoid heredoc escaping issues
+    local media_plist='<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -513,12 +521,13 @@ remote_create_launch_daemons() {
     <key>KeepAlive</key>
     <false/>
 </dict>
-</plist>
-EOF'
+</plist>'
+
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
+        "printf '%s\n' '$media_plist' > /Library/LaunchDaemons/com.transcodarr.nfs-media.plist"
 
     # Cache mount daemon
-    ssh_exec "$mac_user" "$mac_ip" "$key_path" 'sudo tee /Library/LaunchDaemons/com.transcodarr.nfs-cache.plist > /dev/null << '\''EOF'\''
-<?xml version="1.0" encoding="UTF-8"?>
+    local cache_plist='<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -533,16 +542,24 @@ EOF'
     <key>KeepAlive</key>
     <false/>
 </dict>
-</plist>
-EOF'
+</plist>'
+
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
+        "printf '%s\n' '$cache_plist' > /Library/LaunchDaemons/com.transcodarr.nfs-cache.plist"
 
     # Load the daemons
-    ssh_exec "$mac_user" "$mac_ip" "$key_path" \
-        "sudo launchctl load /Library/LaunchDaemons/com.transcodarr.nfs-media.plist 2>/dev/null || true"
-    ssh_exec "$mac_user" "$mac_ip" "$key_path" \
-        "sudo launchctl load /Library/LaunchDaemons/com.transcodarr.nfs-cache.plist 2>/dev/null || true"
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
+        "launchctl load /Library/LaunchDaemons/com.transcodarr.nfs-media.plist 2>/dev/null || true"
+    ssh_exec_sudo "$mac_user" "$mac_ip" "$key_path" \
+        "launchctl load /Library/LaunchDaemons/com.transcodarr.nfs-cache.plist 2>/dev/null || true"
 
-    show_result true "LaunchDaemons created and loaded"
+    # Verify
+    if ssh_exec "$mac_user" "$mac_ip" "$key_path" "test -f /Library/LaunchDaemons/com.transcodarr.nfs-media.plist"; then
+        show_result true "LaunchDaemons created and loaded"
+    else
+        show_error "Failed to create LaunchDaemons"
+        return 1
+    fi
 }
 
 remote_configure_energy() {
