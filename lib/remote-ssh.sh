@@ -506,6 +506,10 @@ if ! mount | grep -q \"\$MOUNT_POINT\"; then
     log \"Mounted Synology cache\"
 fi
 
+# Remove /config/cache if it's a directory (ln -sf doesn't replace directories)
+if [[ -d /config/cache && ! -L /config/cache ]]; then
+    rm -rf /config/cache
+fi
 if [[ ! -L /config/cache ]]; then
     ln -sf \"\$MOUNT_POINT\" /config/cache 2>/dev/null || true
 fi
@@ -684,6 +688,10 @@ if ! mount | grep -q \"\$MOUNT_POINT\"; then
     log \"Mounted Synology cache\"
 fi
 
+# Remove /config/cache if it's a directory (ln -sf doesn't replace directories)
+if [[ -d /config/cache && ! -L /config/cache ]]; then
+    rm -rf /config/cache
+fi
 if [[ ! -L /config/cache ]]; then
     ln -sf \"\$MOUNT_POINT\" /config/cache 2>/dev/null || true
 fi

@@ -1,4 +1,8 @@
-# Jellyfin Startup Debug - 2026-01-05
+# Jellyfin Debug Session - 2026-01-05
+
+---
+
+# Issue 1: Jellyfin Startup Failure
 
 ## Status: ✅ OPGELOST
 
@@ -154,3 +158,209 @@ sudo chown -R ${ABC_UID}:${ABC_GID} /volume1/docker/jellyfin/rffmpeg
 cat /volume1/docker/jellyfin/rffmpeg/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```
+
+---
+---
+
+# Issue 2: Transcoding Fails (Return Code 254)
+
+## Status: 🔍 ONDERZOEK
+
+## Probleem
+Film starten in Jellyfin werkt niet. rffmpeg geeft return code 254.
+
+## Symptomen
+```
+2026-01-05 19:31:02 - rffmpeg - INFO - Running command on host '192.168.175.43'
+2026-01-05 19:31:05 - rffmpeg - ERROR - Finished rffmpeg with return code 254
+```
+
+Return code 254 = SSH/remote command failure
+
+## Analyse
+
+Het ffmpeg commando probeert:
+- **Input:** `file:/data/media/movies/A Real Pain (2024)...mkv`
+- **Output:** `/config/cache/transcodes/...`
+
+Deze paden moeten op de **Mac** beschikbaar zijn via NFS mounts:
+- `/data/media` → NAS media folder
+- `/config/cache` → NAS cache folder
+
+---
+
+## Debug Stappen
+
+### Stap 1: Test SSH verbinding + ffmpeg
+```bash
+sudo docker exec -u abc jellyfin ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -i /config/rffmpeg/.ssh/id_rsa nick@192.168.175.43 "echo SSH_OK && /opt/homebrew/bin/ffmpeg -version 2>&1 | head -1"
+```
+**Resultaat:** ✅ OK
+```
+SSH_OK
+ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers
+```
+
+### Stap 2: Check /data directory op Mac
+```bash
+sudo docker exec -u abc jellyfin ssh ... "ls -la /data 2>&1"
+```
+**Resultaat:** ⚠️ Synthetic link bestaat, maar leeg
+```
+lrwxr-xr-x  1 root  wheel  24 Jan  5 13:21 /data -> System/Volumes/Data/data
+```
+
+### Stap 3: Check NFS mounts op Mac
+```bash
+sudo docker exec -u abc jellyfin ssh ... "mount | grep nfs"
+```
+**Resultaat:** ❌ GEEN OUTPUT - Geen NFS mounts actief!
+
+### Stap 4: Check /data/media/movies/
+```bash
+sudo docker exec -u abc jellyfin ssh ... "ls '/data/media/movies/' 2>&1 | head -3"
+```
+**Resultaat:** ❌ NIET GEVONDEN
+```
+ls: /data/media/movies/: No such file or directory
+```
+
+### Stap 5: Check /config/cache
+```bash
+sudo docker exec -u abc jellyfin ssh ... "ls -la /config/cache 2>&1 | head -5"
+```
+**Resultaat:** ⚠️ Wijst naar lokale directory, niet NFS
+```
+/config/cache -> /Users/Shared/jellyfin-cache
+```
+
+---
+
+## ROOT CAUSE GEVONDEN
+
+**NFS mounts zijn niet actief op de Mac!**
+
+- `/data` synthetic link bestaat, maar `/data/media` is leeg (geen NFS mount)
+- `/config/cache` wijst naar lokale `/Users/Shared/jellyfin-cache` ipv NFS mount
+- `mount | grep nfs` toont geen actieve NFS mounts
+
+ffmpeg kan de bronbestanden niet vinden en kan output niet naar Synology schrijven.
+
+---
+
+## OPLOSSING
+
+### Stap 1: Check LaunchDaemons op Mac
+```bash
+# SSH naar Mac
+ssh nick@192.168.175.43
+
+# Check of mount scripts bestaan
+ls -la /usr/local/bin/mount-*.sh
+
+# Check LaunchDaemons
+ls -la /Library/LaunchDaemons/com.transcodarr.*
+```
+
+### Stap 2: Handmatig NFS mounten (test)
+
+Op de Mac:
+```bash
+# Maak mount points aan
+sudo mkdir -p /data/media
+sudo mkdir -p /config/cache
+
+# Mount NFS shares (vervang NAS_IP met je Synology IP)
+sudo mount -t nfs -o resvport,rw,nolock NAS_IP:/volume1/data/media /data/media
+sudo mount -t nfs -o resvport,rw,nolock NAS_IP:/volume1/docker/jellyfin/cache /config/cache
+
+# Verifieer
+ls /data/media/movies/
+ls /config/cache/
+```
+
+### Stap 3: Als mounts werken, maak ze persistent
+De installer zou LaunchDaemons moeten hebben aangemaakt. Check of ze bestaan en actief zijn.
+
+---
+
+## Verdere Debug Stappen (uitgevoerd)
+
+### Stap 6: NFS mounts handmatig gefixed
+```bash
+# Op de Mac:
+sudo mkdir -p /data/media
+sudo mkdir -p /Users/Shared/jellyfin-cache
+
+# Mount scripts gemaakt en uitgevoerd
+sudo /usr/local/bin/mount-nfs-media.sh
+sudo /usr/local/bin/mount-synology-cache.sh
+```
+**Resultaat:** ✅ NFS mounts werken
+```
+192.168.175.49:/volume1/data/media on /System/Volumes/Data/data/media (nfs)
+192.168.175.49:/volume1/docker/jellyfin/cache on /Users/Shared/jellyfin-cache (nfs)
+```
+
+### Stap 7: Transcoding faalt nog steeds (254)
+
+**Probleem:** `/config/cache` was een directory met daarin een symlink:
+```
+/config/cache/
+└── jellyfin-cache -> /Users/Shared/jellyfin-cache   ❌ FOUT
+```
+
+rffmpeg verwacht `/config/cache/transcodes/` maar die bestond niet.
+
+### Stap 8: Fix /config/cache symlink
+```bash
+# Op de Mac:
+sudo rm -rf /config/cache
+sudo ln -sf /Users/Shared/jellyfin-cache /config/cache
+```
+**Resultaat:** ✅ Correct
+```
+/config/cache -> /Users/Shared/jellyfin-cache   ✅ GOED
+/config/cache/transcodes/                        ✅ Bestaat nu
+```
+
+---
+
+## Status: ✅ ISSUE 2 OPGELOST
+
+### Verificatie
+```
+# rffmpeg status toont actieve transcoding:
+Hostname        State   Active Commands
+192.168.175.43  active  PID 8307: ffmpeg -analyzeduration 200M ...
+
+# Mac CPU gebruik: 644.7% (alle cores!)
+# Film speelt correct af
+```
+
+---
+
+## ROOT CAUSES SAMENVATTING
+
+### Issue 1: Jellyfin start niet
+- **Oorzaak:** SSH key ownership 911:911 maar abc user heeft uid 1026
+- **Fix:** `sudo chown -R 1026:100 /volume1/docker/jellyfin/rffmpeg`
+- **Installer fix:** ✅ Dynamische uid lookup toegevoegd
+
+### Issue 2: Transcoding faalt (254)
+- **Oorzaak 1:** NFS mounts niet actief op Mac (scripts niet aangemaakt)
+- **Oorzaak 2:** `/config/cache` was directory ipv directe symlink
+- **Fix:** Mount scripts uitvoeren + symlink correct maken
+- **Installer fix:** ❌ NOG TE DOEN
+
+---
+
+## INSTALLER BUGS TE FIXEN
+
+1. **SSH key ownership:** ✅ GEFIXED
+   - Was: hardcoded 911:911
+   - Nu: dynamisch abc uid detecteren
+
+2. **/config/cache symlink:** ❌ TE FIXEN
+   - Probleem: `ln -sf` in bestaande directory maakt sublink
+   - Fix: Eerst `rm -rf /config/cache` voordat symlink wordt gemaakt
