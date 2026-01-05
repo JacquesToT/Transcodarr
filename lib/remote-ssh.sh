@@ -123,6 +123,28 @@ ssh_exec_sudo() {
         "${mac_user}@${mac_ip}" "sudo $command"
 }
 
+# Execute multiple sudo commands in a single SSH session
+# This minimizes password prompts by running all commands under one sudo session
+# Usage: ssh_exec_sudo_script user ip key_path <<'SCRIPT'
+#   command1
+#   command2
+# SCRIPT
+ssh_exec_sudo_script() {
+    local mac_user="$1"
+    local mac_ip="$2"
+    local key_path="$3"
+    local script
+    script=$(cat)  # Read from stdin
+
+    # Wrap commands in a single sudo bash -c call
+    ssh -tt \
+        -o ConnectTimeout=30 \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -i "$key_path" \
+        "${mac_user}@${mac_ip}" "sudo bash -c '$script'"
+}
+
 # Execute a command and capture output
 ssh_exec_capture() {
     local mac_user="$1"
@@ -590,6 +612,164 @@ remote_configure_energy() {
         "pmset -a sleep 0 displaysleep 0 disksleep 0 powernap 0 autorestart 1 womp 1"
 
     show_result true "Energy settings configured (sleep disabled, Wake-on-LAN enabled)"
+}
+
+# ============================================================================
+# COMBINED NFS SETUP (SINGLE SUDO SESSION)
+# ============================================================================
+
+# Combined function that does all NFS setup in one sudo session
+# This minimizes password prompts by running all commands together
+remote_setup_nfs_complete() {
+    local mac_user="$1"
+    local mac_ip="$2"
+    local key_path="$3"
+    local nas_ip="$4"
+    local media_path="$5"
+    local cache_path="$6"
+
+    show_info "Setting up NFS on Mac (single sudo session)..."
+    echo ""
+    show_warning ">>> Enter your MAC password ONCE when prompted <<<"
+    echo ""
+
+    # Build the complete setup script
+    # All commands run in a single sudo session
+    local setup_script="
+# Create directories
+mkdir -p /usr/local/bin
+
+# === Mount Scripts ===
+cat > /usr/local/bin/mount-nfs-media.sh << 'MEDIA_SCRIPT'
+#!/bin/bash
+MOUNT_POINT=\"/data/media\"
+NFS_SHARE=\"${nas_ip}:${media_path}\"
+LOG_FILE=\"/var/log/mount-nfs-media.log\"
+
+log() { echo \"\$(date '+%Y-%m-%d %H:%M:%S') - \$1\" >> \"\$LOG_FILE\"; }
+
+for i in {1..30}; do
+    ping -c1 -W1 ${nas_ip} >/dev/null 2>&1 && break
+    sleep 1
+done
+
+if mount | grep -q \"\$MOUNT_POINT\"; then
+    log \"NFS already mounted\"
+    exit 0
+fi
+
+mkdir -p \"\$MOUNT_POINT\"
+/sbin/mount -t nfs -o resvport,rw,nolock \"\$NFS_SHARE\" \"\$MOUNT_POINT\"
+log \"NFS mounted: \$NFS_SHARE -> \$MOUNT_POINT\"
+MEDIA_SCRIPT
+
+chmod +x /usr/local/bin/mount-nfs-media.sh
+
+cat > /usr/local/bin/mount-synology-cache.sh << 'CACHE_SCRIPT'
+#!/bin/bash
+MOUNT_POINT=\"/Users/Shared/jellyfin-cache\"
+NFS_SHARE=\"${nas_ip}:${cache_path}\"
+LOG_FILE=\"/var/log/mount-synology-cache.log\"
+
+log() { echo \"\$(date '+%Y-%m-%d %H:%M:%S') - \$1\" >> \"\$LOG_FILE\"; }
+
+for i in {1..30}; do
+    ping -c1 -W1 ${nas_ip} >/dev/null 2>&1 && break
+    sleep 1
+done
+
+mkdir -p \"\$MOUNT_POINT\"
+if ! mount | grep -q \"\$MOUNT_POINT\"; then
+    /sbin/mount -t nfs -o resvport,rw,nolock \"\$NFS_SHARE\" \"\$MOUNT_POINT\"
+    log \"Mounted Synology cache\"
+fi
+
+if [[ ! -L /config/cache ]]; then
+    ln -sf \"\$MOUNT_POINT\" /config/cache 2>/dev/null || true
+fi
+CACHE_SCRIPT
+
+chmod +x /usr/local/bin/mount-synology-cache.sh
+
+# === LaunchDaemons ===
+cat > /Library/LaunchDaemons/com.transcodarr.nfs-media.plist << 'MEDIA_PLIST'
+<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+<dict>
+    <key>Label</key>
+    <string>com.transcodarr.nfs-media</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/mount-nfs-media.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
+MEDIA_PLIST
+
+cat > /Library/LaunchDaemons/com.transcodarr.nfs-cache.plist << 'CACHE_PLIST'
+<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+<dict>
+    <key>Label</key>
+    <string>com.transcodarr.nfs-cache</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/mount-synology-cache.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
+CACHE_PLIST
+
+# Load LaunchDaemons
+launchctl load /Library/LaunchDaemons/com.transcodarr.nfs-media.plist 2>/dev/null || true
+launchctl load /Library/LaunchDaemons/com.transcodarr.nfs-cache.plist 2>/dev/null || true
+
+# === Energy Settings ===
+pmset -a sleep 0 displaysleep 0 disksleep 0 powernap 0 autorestart 1 womp 1
+
+# === Test Mount ===
+/usr/local/bin/mount-nfs-media.sh 2>/dev/null || true
+
+echo 'SETUP_COMPLETE'
+"
+
+    # Execute the entire setup in one sudo session
+    local result
+    result=$(ssh -tt \
+        -o ConnectTimeout=60 \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -i "$key_path" \
+        "${mac_user}@${mac_ip}" "sudo bash -s" <<< "$setup_script" 2>&1)
+
+    if echo "$result" | grep -q "SETUP_COMPLETE"; then
+        show_result true "Mount scripts created"
+        show_result true "LaunchDaemons created and loaded"
+        show_result true "Energy settings configured"
+
+        # Verify NFS mount
+        if ssh_exec "$mac_user" "$mac_ip" "$key_path" "mount | grep -q '/data/media'"; then
+            show_result true "NFS media mount working"
+        else
+            show_warning "NFS mount not active yet (will mount on next boot)"
+            show_info "Run manually on Mac: sudo /usr/local/bin/mount-nfs-media.sh"
+        fi
+        return 0
+    else
+        show_error "Setup failed"
+        echo "$result"
+        return 1
+    fi
 }
 
 # ============================================================================

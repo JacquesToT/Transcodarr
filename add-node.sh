@@ -161,17 +161,9 @@ step_configure_nfs() {
     media_path=$(get_config "media_path")
     cache_path=$(get_config "cache_path")
 
-    # Create mount scripts
-    remote_create_mount_scripts "$MAC_USER" "$MAC_IP" "$key_path" "$nas_ip" "$media_path" "$cache_path"
-
-    # Create LaunchDaemons for auto-mount
-    remote_create_launch_daemons "$MAC_USER" "$MAC_IP" "$key_path"
-
-    # Configure energy settings (disable sleep, enable Wake-on-LAN)
-    remote_configure_energy "$MAC_USER" "$MAC_IP" "$key_path"
-
-    # Verify NFS mounts work
-    remote_verify_nfs "$MAC_USER" "$MAC_IP" "$key_path" "$nas_ip" "$media_path"
+    # Use combined function - single sudo session for all NFS setup
+    # This creates mount scripts, LaunchDaemons, configures energy, and verifies NFS
+    remote_setup_nfs_complete "$MAC_USER" "$MAC_IP" "$key_path" "$nas_ip" "$media_path" "$cache_path"
 }
 
 step_register_rffmpeg() {

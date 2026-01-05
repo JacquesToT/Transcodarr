@@ -132,12 +132,10 @@ wizard_synology() {
 
             # Jump to post-reboot steps
             show_step 7 8 "Configure NFS Mounts"
-            remote_create_mount_scripts "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path" "$cache_path"
-            remote_create_launch_daemons "$mac_user" "$mac_ip" "$key_path"
-            remote_configure_energy "$mac_user" "$mac_ip" "$key_path"
+            # Use combined function - single sudo session for all NFS setup
+            remote_setup_nfs_complete "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path" "$cache_path"
 
             show_step 8 8 "Verify and Complete"
-            remote_verify_nfs "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path"
 
             mark_step_complete "nfs_verified"
 
@@ -354,14 +352,12 @@ wizard_synology() {
     # Step 7: Remote Mac Setup (post-reboot)
     show_step 7 8 "Configure NFS Mounts"
 
-    remote_create_mount_scripts "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path" "$cache_path"
-    remote_create_launch_daemons "$mac_user" "$mac_ip" "$key_path"
-    remote_configure_energy "$mac_user" "$mac_ip" "$key_path"
+    # Use combined function - single sudo session for all NFS setup
+    remote_setup_nfs_complete "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path" "$cache_path"
 
     # Step 8: Verify and finalize
     show_step 8 8 "Verify and Complete"
 
-    remote_verify_nfs "$mac_user" "$mac_ip" "$key_path" "$nas_ip" "$media_path"
     mark_step_complete "nfs_verified"
 
     # Copy rffmpeg config to Jellyfin
