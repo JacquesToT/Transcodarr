@@ -56,22 +56,37 @@ class TranscodarrConfig:
         return self._is_synology
 
     def _detect_synology(self) -> bool:
-        """Detect if we're running on a Synology NAS."""
-        # Check for Synology-specific path
+        """Detect if we're running on a Synology NAS.
+
+        Detection methods (in order):
+        1. Check for /etc/synoinfo.conf (Synology-specific file)
+        2. Check for /volume1 (Synology path structure)
+        3. Verify docker/jellyfin is accessible (with sudo if needed)
+        """
+        # Method 1: Synology-specific config file (most reliable)
+        if Path("/etc/synoinfo.conf").exists():
+            return True
+
+        # Method 2: Check for Synology path structure
         if not Path("/volume1").exists():
             return False
 
-        # Check if docker is available and jellyfin container exists
-        try:
-            result = subprocess.run(
-                ["docker", "ps", "-q", "-f", "name=jellyfin"],
-                capture_output=True,
-                timeout=5
-            )
-            # If we get output, jellyfin container exists
-            return result.returncode == 0 and bool(result.stdout.strip())
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            return False
+        # Method 3: Check if docker is available (try with sudo for Synology)
+        for docker_cmd in [["docker"], ["sudo", "-n", "docker"]]:
+            try:
+                result = subprocess.run(
+                    docker_cmd + ["ps", "-q", "-f", "name=jellyfin"],
+                    capture_output=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return True
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                continue
+
+        # If /volume1 exists but docker check failed, still assume Synology
+        # (docker might just need interactive sudo)
+        return Path("/volume1").exists()
 
     @classmethod
     def load(cls) -> "TranscodarrConfig":
@@ -175,14 +190,16 @@ class TranscodarrConfig:
             docker_cmd: Command to run inside the container
 
         Returns:
-            Full command list - either direct docker exec (Synology)
+            Full command list - either direct docker exec (Synology with sudo)
             or via SSH (remote Mac)
         """
-        full_cmd = f"docker exec jellyfin {docker_cmd}"
-
         if self.is_synology:
+            # On Synology, docker typically requires sudo
+            full_cmd = f"sudo docker exec jellyfin {docker_cmd}"
             return self.get_local_command(full_cmd)
         else:
+            # Via SSH, the remote user likely has docker permissions
+            full_cmd = f"docker exec jellyfin {docker_cmd}"
             return self.get_ssh_command(full_cmd)
 
 
