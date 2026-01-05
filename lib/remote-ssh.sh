@@ -924,17 +924,23 @@ echo 'REMOVED: SSH key (manual step needed)'
     show_warning ">>> Enter your MAC password when prompted <<<"
     echo ""
 
-    # Execute sudo parts - use temp file to capture output while allowing terminal interaction
+    # Execute sudo parts using base64 + temp file to avoid stdin conflicts
+    local script_b64
+    script_b64=$(echo "$uninstall_script" | base64)
+
     local temp_output
     temp_output=$(mktemp)
 
-    # Run SSH directly (not in subshell) so terminal interaction works for password prompt
+    # Write script to temp file on Mac, then execute with sudo
+    # This keeps stdin free for the password prompt
     ssh -tt \
         -o ConnectTimeout=30 \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
         -i "$key_path" \
-        "${mac_user}@${mac_ip}" "sudo bash -s" <<< "$uninstall_script" 2>&1 | tee "$temp_output"
+        "${mac_user}@${mac_ip}" \
+        "TMPSCRIPT=\$(mktemp) && echo '$script_b64' | base64 -d > \"\$TMPSCRIPT\" && sudo bash \"\$TMPSCRIPT\" && rm -f \"\$TMPSCRIPT\"" \
+        2>&1 | tee "$temp_output"
 
     # Show results from captured output
     grep "^REMOVED:" "$temp_output" 2>/dev/null | while read -r line; do
