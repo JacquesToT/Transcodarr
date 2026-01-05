@@ -61,7 +61,34 @@ step_collect_mac_info() {
     show_step 1 4 "Add New Mac"
 
     MAC_IP=$(ask_input "New Mac IP address" "192.168.1.51")
-    MAC_USER=$(ask_input "Mac username" "$(whoami)")
+
+    # Get stored username from first installation
+    local stored_user
+    stored_user=$(get_config "mac_user")
+
+    if [[ -n "$stored_user" ]]; then
+        # Show warning about username requirement
+        echo ""
+        show_warning "All Macs must use the same SSH username!"
+        show_info "First Mac was configured with user: $stored_user"
+        echo ""
+
+        MAC_USER=$(ask_input "Mac username (must be: $stored_user)" "$stored_user")
+
+        if [[ "$MAC_USER" != "$stored_user" ]]; then
+            echo ""
+            show_error "Username must be '$stored_user' to match rffmpeg configuration"
+            show_info "Either:"
+            echo "  1. Use username '$stored_user' on this Mac"
+            echo "  2. Create user '$stored_user' on this Mac"
+            echo ""
+            return 1
+        fi
+    else
+        MAC_USER=$(ask_input "Mac username" "$(whoami)")
+        # Save for future add-node calls
+        set_config "mac_user" "$MAC_USER"
+    fi
 }
 
 step_verify_connectivity() {
@@ -273,7 +300,9 @@ step_register_rffmpeg() {
 
 add_node_wizard() {
     # Step 1: Collect Mac info
-    step_collect_mac_info
+    if ! step_collect_mac_info; then
+        return 1
+    fi
 
     # Step 2: Verify connectivity
     if ! step_verify_connectivity; then

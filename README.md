@@ -24,6 +24,16 @@ Offload live video transcoding from your NAS to Apple Silicon Macs with hardware
 
 ## Prerequisites
 
+### Same Username on All Macs
+
+> **IMPORTANT**: All Mac nodes MUST use the same SSH username.
+
+rffmpeg (the load balancer) uses a single SSH user configuration for all remote hosts. If you have multiple Macs:
+- Use the **same username** on all Macs, OR
+- Create a dedicated user (e.g., `transcodarr`) on each Mac
+
+**Example**: If your first Mac uses username `nick`, all other Macs must also have a user `nick`.
+
 ### Gather This Information First
 
 Before starting, collect these values:
@@ -34,7 +44,7 @@ Before starting, collect these values:
 | **Synology Username** | `admin` | Your login username |
 | **Media Path** | `/volume1/data/media` | File Station → Right-click folder → Properties |
 | **Mac IP** | `192.168.1.50` | System Settings → Network |
-| **Mac Username** | `Mac-User` | Terminal: `whoami` |
+| **Mac Username** | `nick` | Terminal: `whoami` (must be same on all Macs!) |
 
 ---
 
