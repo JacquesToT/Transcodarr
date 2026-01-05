@@ -744,13 +744,20 @@ echo 'SETUP_COMPLETE'
 "
 
     # Execute the entire setup in one sudo session
-    local result
-    result=$(ssh -tt \
+    # Use temp file to capture output while allowing terminal interaction for password
+    local temp_output
+    temp_output=$(mktemp)
+
+    ssh -tt \
         -o ConnectTimeout=60 \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
         -i "$key_path" \
-        "${mac_user}@${mac_ip}" "sudo bash -s" <<< "$setup_script" 2>&1)
+        "${mac_user}@${mac_ip}" "sudo bash -s" <<< "$setup_script" 2>&1 | tee "$temp_output"
+
+    local result
+    result=$(cat "$temp_output")
+    rm -f "$temp_output"
 
     if echo "$result" | grep -q "SETUP_COMPLETE"; then
         show_result true "Mount scripts created"
@@ -900,19 +907,23 @@ echo 'REMOVED: SSH key (manual step needed)'
     show_warning ">>> Enter your MAC password when prompted <<<"
     echo ""
 
-    # Execute sudo parts
-    local result
-    result=$(ssh -tt \
+    # Execute sudo parts - use temp file to capture output while allowing terminal interaction
+    local temp_output
+    temp_output=$(mktemp)
+
+    # Run SSH directly (not in subshell) so terminal interaction works for password prompt
+    ssh -tt \
         -o ConnectTimeout=30 \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
         -i "$key_path" \
-        "${mac_user}@${mac_ip}" "sudo bash -s" <<< "$uninstall_script" 2>&1)
+        "${mac_user}@${mac_ip}" "sudo bash -s" <<< "$uninstall_script" 2>&1 | tee "$temp_output"
 
-    # Show results
-    echo "$result" | grep "^REMOVED:" | while read -r line; do
+    # Show results from captured output
+    grep "^REMOVED:" "$temp_output" 2>/dev/null | while read -r line; do
         show_result true "${line#REMOVED: }"
     done
+    rm -f "$temp_output"
 
     # Handle FFmpeg removal (as user via brew)
     if echo "$components" | grep -q "ffmpeg"; then
