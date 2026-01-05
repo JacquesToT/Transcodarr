@@ -752,16 +752,25 @@ echo 'SETUP_COMPLETE'
 "
 
     # Execute the entire setup in one sudo session
-    # Use temp file to capture output while allowing terminal interaction for password
+    # Strategy: Write script to temp file first, then execute with sudo
+    # This keeps stdin free for the sudo password prompt
+    local script_b64
+    script_b64=$(echo "$setup_script" | base64)
+
     local temp_output
     temp_output=$(mktemp)
 
+    # Step 1: Write the script to a temp file on Mac (no sudo needed)
+    # Step 2: Execute with sudo (password prompt works correctly)
+    # Step 3: Clean up temp file
     ssh -tt \
         -o ConnectTimeout=60 \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
         -i "$key_path" \
-        "${mac_user}@${mac_ip}" "sudo bash -s" <<< "$setup_script" 2>&1 | tee "$temp_output"
+        "${mac_user}@${mac_ip}" \
+        "TMPSCRIPT=\$(mktemp) && echo '$script_b64' | base64 -d > \"\$TMPSCRIPT\" && sudo bash \"\$TMPSCRIPT\" && rm -f \"\$TMPSCRIPT\"" \
+        2>&1 | tee "$temp_output"
 
     local result
     result=$(cat "$temp_output")
