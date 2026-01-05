@@ -304,7 +304,11 @@ chmod 600 ~/.ssh/authorized_keys
 \`\`\`bash
 sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh
 sudo cp -a output/rffmpeg/. ${jellyfin_config}/rffmpeg/
-sudo chown -R 911:911 ${jellyfin_config}/rffmpeg
+
+# Get abc user UID from container (matches your PUID setting)
+ABC_UID=\$(sudo docker exec jellyfin id -u abc)
+ABC_GID=\$(sudo docker exec jellyfin id -g abc)
+sudo chown -R \${ABC_UID}:\${ABC_GID} ${jellyfin_config}/rffmpeg
 \`\`\`
 
 ---
@@ -374,6 +378,11 @@ copy_rffmpeg_files() {
     local jellyfin_config="$1"
     local success=true
 
+    # Dynamically get abc user UID/GID from running container
+    local abc_uid abc_gid
+    abc_uid=$(sudo docker exec jellyfin id -u abc 2>/dev/null || echo "1000")
+    abc_gid=$(sudo docker exec jellyfin id -g abc 2>/dev/null || echo "1000")
+
     echo ""
     if command -v gum &> /dev/null; then
         gum style \
@@ -394,7 +403,7 @@ copy_rffmpeg_files() {
     echo ""
     echo -e "  ${CYAN}1.${NC} sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh"
     echo -e "  ${CYAN}2.${NC} sudo cp -a ${OUTPUT_DIR}/rffmpeg/. ${jellyfin_config}/rffmpeg/"
-    echo -e "  ${CYAN}3.${NC} sudo chown -R 911:911 ${jellyfin_config}/rffmpeg"
+    echo -e "  ${CYAN}3.${NC} sudo chown -R ${abc_uid}:${abc_gid} ${jellyfin_config}/rffmpeg"
     echo ""
 
     if ask_confirm "Execute these commands now?"; then
@@ -420,9 +429,9 @@ copy_rffmpeg_files() {
             success=false
         fi
 
-        # Step 3: Set permissions
+        # Step 3: Set permissions (use dynamic abc uid/gid)
         echo -n "  3. Setting permissions... "
-        if sudo chown -R 911:911 "${jellyfin_config}/rffmpeg" 2>/dev/null; then
+        if sudo chown -R "${abc_uid}:${abc_gid}" "${jellyfin_config}/rffmpeg" 2>/dev/null; then
             echo -e "${GREEN}✓${NC}"
         else
             echo -e "${RED}✗${NC}"
@@ -448,12 +457,17 @@ copy_rffmpeg_files() {
 show_manual_copy_instructions() {
     local jellyfin_config="$1"
 
+    # Get abc uid/gid for instructions
+    local abc_uid abc_gid
+    abc_uid=$(sudo docker exec jellyfin id -u abc 2>/dev/null || echo "<PUID>")
+    abc_gid=$(sudo docker exec jellyfin id -g abc 2>/dev/null || echo "<PGID>")
+
     echo ""
     show_info "Run these commands manually:"
     echo ""
     echo -e "  ${GREEN}sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh${NC}"
     echo -e "  ${GREEN}sudo cp -a ${OUTPUT_DIR}/rffmpeg/. ${jellyfin_config}/rffmpeg/${NC}"
-    echo -e "  ${GREEN}sudo chown -R 911:911 ${jellyfin_config}/rffmpeg${NC}"
+    echo -e "  ${GREEN}sudo chown -R ${abc_uid}:${abc_gid} ${jellyfin_config}/rffmpeg${NC}"
     echo ""
 }
 
