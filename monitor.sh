@@ -13,7 +13,27 @@ VENV_DIR="$SCRIPT_DIR/.venv"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m'
+
+# Check if running on Synology
+is_synology() {
+    [[ -f /etc/synoinfo.conf ]] || [[ -d /volume1 ]]
+}
+
+# Ensure sudo credentials are cached (for Synology docker access)
+ensure_sudo() {
+    if is_synology; then
+        echo -e "${CYAN}Synology detected - caching sudo credentials...${NC}"
+        # Check if sudo is already cached
+        if ! sudo -n true 2>/dev/null; then
+            echo -e "${YELLOW}Enter your password to access Docker:${NC}"
+            sudo -v
+        fi
+        echo -e "${GREEN}✓ Sudo credentials cached${NC}"
+        echo ""
+    fi
+}
 
 # Check Python 3
 check_python() {
@@ -57,9 +77,13 @@ main() {
         echo -e "${RED}Error: Python 3 is required.${NC}"
         echo ""
         echo "Install Python with:"
-        echo "  brew install python3"
+        echo "  brew install python3   (macOS)"
+        echo "  apt install python3    (Linux)"
         exit 1
     fi
+
+    # On Synology, ensure sudo is cached for docker access
+    ensure_sudo
 
     # Setup and activate virtual environment
     setup_venv "$PYTHON_CMD"
