@@ -86,24 +86,58 @@ class DataCollector:
         return self._data
 
     async def collect_all(self) -> CollectedData:
-        """Collect all data, ensuring SSH check completes before SSH-dependent tasks."""
-        # Phase 1: Check connections first (SSH must complete before rffmpeg checks)
-        await asyncio.gather(
-            self.check_ssh_connection(),
-            self.check_nfs_mounts(),
-            self.get_local_ffmpeg_processes(),
-            return_exceptions=True
-        )
+        """Collect all data, ensuring connection check completes before dependent tasks."""
+        if self.config.is_synology:
+            # Local Synology mode: No SSH needed, docker exec directly
+            self._data.status.ssh_status = ConnectionStatus.CONNECTED
+            self._data.status.ssh_error = ""
 
-        # Phase 2: SSH-dependent tasks (only run after SSH status is known)
-        await asyncio.gather(
-            self.get_rffmpeg_status(),
-            self.get_rffmpeg_logs(),
-            return_exceptions=True
-        )
+            # Check local paths exist (instead of NFS mounts)
+            await self.check_local_paths()
+
+            # Get rffmpeg data directly
+            await asyncio.gather(
+                self.get_rffmpeg_status(),
+                self.get_rffmpeg_logs(),
+                return_exceptions=True
+            )
+        else:
+            # Remote Mac mode: SSH to NAS
+            # Phase 1: Check connections first (SSH must complete before rffmpeg checks)
+            await asyncio.gather(
+                self.check_ssh_connection(),
+                self.check_nfs_mounts(),
+                self.get_local_ffmpeg_processes(),
+                return_exceptions=True
+            )
+
+            # Phase 2: SSH-dependent tasks (only run after SSH status is known)
+            await asyncio.gather(
+                self.get_rffmpeg_status(),
+                self.get_rffmpeg_logs(),
+                return_exceptions=True
+            )
 
         self._data.last_updated = datetime.now()
         return self._data
+
+    async def check_local_paths(self) -> None:
+        """Check if local Synology paths exist (for Synology mode)."""
+        from pathlib import Path
+
+        # Check media path
+        if Path(self.config.media_path).exists():
+            self._data.status.nfs_media_status = ConnectionStatus.CONNECTED
+        else:
+            self._data.status.nfs_media_status = ConnectionStatus.DISCONNECTED
+            self._data.status.nfs_media_error = f"{self.config.media_path} not found"
+
+        # Check cache path
+        if Path(self.config.cache_path).exists():
+            self._data.status.nfs_cache_status = ConnectionStatus.CONNECTED
+        else:
+            self._data.status.nfs_cache_status = ConnectionStatus.DISCONNECTED
+            self._data.status.nfs_cache_error = f"{self.config.cache_path} not found"
 
     async def check_ssh_connection(self) -> bool:
         """Check if SSH to NAS is working."""
@@ -244,13 +278,19 @@ class DataCollector:
             return None
 
     async def get_rffmpeg_status(self) -> list[dict]:
-        """Get rffmpeg status from Synology via SSH."""
+        """Get rffmpeg status from Jellyfin container.
+
+        Works in both modes:
+        - Synology: Direct docker command
+        - Mac: SSH to NAS then docker command
+        """
         if self._data.status.ssh_status != ConnectionStatus.CONNECTED:
             return []
 
         try:
-            cmd = self.config.get_ssh_command(
-                "docker exec jellyfin rffmpeg status 2>/dev/null || echo 'rffmpeg not available'"
+            # get_docker_command handles both local Synology and remote Mac modes
+            cmd = self.config.get_docker_command(
+                "rffmpeg status 2>/dev/null || echo 'rffmpeg not available'"
             )
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -296,13 +336,19 @@ class DataCollector:
         return hosts
 
     async def get_rffmpeg_logs(self, lines: int = 50) -> list[str]:
-        """Get recent rffmpeg logs from Synology."""
+        """Get recent rffmpeg logs from Jellyfin container.
+
+        Works in both modes:
+        - Synology: Direct docker command
+        - Mac: SSH to NAS then docker command
+        """
         if self._data.status.ssh_status != ConnectionStatus.CONNECTED:
             return []
 
         try:
-            cmd = self.config.get_ssh_command(
-                f"docker exec jellyfin tail -{lines} /config/log/rffmpeg.log 2>/dev/null || echo 'No logs'"
+            # get_docker_command handles both local Synology and remote Mac modes
+            cmd = self.config.get_docker_command(
+                f"tail -{lines} /config/log/rffmpeg.log 2>/dev/null || echo 'No logs'"
             )
             proc = await asyncio.create_subprocess_exec(
                 *cmd,

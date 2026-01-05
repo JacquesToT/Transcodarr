@@ -234,15 +234,21 @@ def main():
 
     config = get_config()
 
-    # Test SSH BEFORE starting UI so password prompt is visible
-    if not check_ssh_before_ui(config):
-        print("\nSSH connection required for monitoring.")
-        print(f"Make sure you can SSH to: {config.nas_user}@{config.nas_ip}")
-        print("\nTip: Set up SSH key authentication to avoid password prompts:")
-        print(f"  ssh-copy-id {config.nas_user}@{config.nas_ip}")
-        sys.exit(1)
+    if config.is_synology:
+        # Running directly on Synology - no SSH needed
+        print("Detected Synology NAS - running in local mode")
+        print("✓ Direct access to Jellyfin container\n")
+    else:
+        # Running on Mac - need SSH to NAS
+        # Test SSH BEFORE starting UI so password prompt is visible
+        if not check_ssh_before_ui(config):
+            print("\nSSH connection required for monitoring.")
+            print(f"Make sure you can SSH to: {config.nas_user}@{config.nas_ip}")
+            print("\nTip: Set up SSH key authentication to avoid password prompts:")
+            print(f"  ssh-copy-id {config.nas_user}@{config.nas_ip}")
+            sys.exit(1)
 
-    # SSH OK, now start UI
+    # Start UI
     app = TranscodarrMonitor()
     app.run()
 

@@ -1,10 +1,15 @@
 """
 Configuration loader for Transcodarr Monitor.
 Loads settings from ~/.transcodarr/state.json
+
+Supports two modes:
+- Synology mode: Running directly on NAS, uses docker exec directly
+- Remote mode: Running on Mac, uses SSH to connect to NAS
 """
 
 import json
 import os
+import subprocess
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
@@ -33,6 +38,40 @@ class TranscodarrConfig:
     # Monitor settings
     refresh_interval: float = 5.0
     log_lines: int = 50
+
+    # Runtime detection (set after load)
+    _is_synology: Optional[bool] = field(default=None, repr=False)
+
+    @property
+    def is_synology(self) -> bool:
+        """Check if running directly on Synology NAS.
+
+        Detection criteria:
+        1. /volume1 exists (Synology-specific path)
+        2. Docker is available
+        3. Jellyfin container exists
+        """
+        if self._is_synology is None:
+            self._is_synology = self._detect_synology()
+        return self._is_synology
+
+    def _detect_synology(self) -> bool:
+        """Detect if we're running on a Synology NAS."""
+        # Check for Synology-specific path
+        if not Path("/volume1").exists():
+            return False
+
+        # Check if docker is available and jellyfin container exists
+        try:
+            result = subprocess.run(
+                ["docker", "ps", "-q", "-f", "name=jellyfin"],
+                capture_output=True,
+                timeout=5
+            )
+            # If we get output, jellyfin container exists
+            return result.returncode == 0 and bool(result.stdout.strip())
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
 
     @classmethod
     def load(cls) -> "TranscodarrConfig":
@@ -121,6 +160,30 @@ class TranscodarrConfig:
         ssh_cmd.append(command)
 
         return ssh_cmd
+
+    def get_local_command(self, command: str) -> list[str]:
+        """Build command for local execution on Synology.
+
+        Wraps the command in sh -c for proper shell interpretation.
+        """
+        return ["sh", "-c", command]
+
+    def get_docker_command(self, docker_cmd: str) -> list[str]:
+        """Get command to run inside jellyfin container.
+
+        Args:
+            docker_cmd: Command to run inside the container
+
+        Returns:
+            Full command list - either direct docker exec (Synology)
+            or via SSH (remote Mac)
+        """
+        full_cmd = f"docker exec jellyfin {docker_cmd}"
+
+        if self.is_synology:
+            return self.get_local_command(full_cmd)
+        else:
+            return self.get_ssh_command(full_cmd)
 
 
 # Global config instance
