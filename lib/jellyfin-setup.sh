@@ -41,6 +41,115 @@ generate_ssh_key() {
     mark_step_complete "ssh_key_generated"
 }
 
+# Ensure SSH key exists in Jellyfin container
+# This function checks the container and creates/copies keys if needed
+ensure_container_ssh_key() {
+    local jellyfin_config="${1:-$(get_config jellyfin_config)}"
+
+    if [[ -z "$jellyfin_config" ]]; then
+        jellyfin_config="/volume1/docker/jellyfin"
+    fi
+
+    local container_key_path="/config/rffmpeg/.ssh/id_rsa"
+    local host_key_dir="${jellyfin_config}/rffmpeg/.ssh"
+    local host_key_file="${host_key_dir}/id_rsa"
+    local output_key="${OUTPUT_DIR}/rffmpeg/.ssh/id_rsa"
+
+    # Check if key exists in container
+    if sudo docker exec jellyfin test -f "$container_key_path" 2>/dev/null; then
+        show_skip "SSH key already exists in Jellyfin container"
+        return 0
+    fi
+
+    show_info "Setting up SSH key for rffmpeg..."
+
+    # Step 1: Ensure key exists in output dir
+    if [[ ! -f "$output_key" ]]; then
+        show_info "Generating SSH key..."
+        mkdir -p "${OUTPUT_DIR}/rffmpeg/.ssh"
+        ssh-keygen -t ed25519 -f "$output_key" -N "" -C "transcodarr-rffmpeg" -q
+        chmod 600 "$output_key"
+        chmod 644 "${output_key}.pub"
+    fi
+
+    # Step 2: Copy to Jellyfin config directory
+    show_info "Copying SSH key to Jellyfin..."
+    sudo mkdir -p "$host_key_dir"
+    sudo cp "$output_key" "$host_key_file"
+    sudo cp "${output_key}.pub" "${host_key_file}.pub"
+    sudo chown -R 911:911 "${jellyfin_config}/rffmpeg"
+    sudo chmod 600 "$host_key_file"
+    sudo chmod 644 "${host_key_file}.pub"
+
+    # Step 3: Verify key is now visible in container
+    if sudo docker exec jellyfin test -f "$container_key_path" 2>/dev/null; then
+        show_result true "SSH key installed in Jellyfin container"
+        return 0
+    else
+        show_error "SSH key not visible in container"
+        show_info "You may need to restart Jellyfin: sudo docker restart jellyfin"
+        return 1
+    fi
+}
+
+# Copy SSH public key to a Mac for passwordless access
+copy_ssh_key_to_mac() {
+    local mac_user="$1"
+    local mac_ip="$2"
+    local jellyfin_config="${3:-$(get_config jellyfin_config)}"
+
+    if [[ -z "$jellyfin_config" ]]; then
+        jellyfin_config="/volume1/docker/jellyfin"
+    fi
+
+    local pub_key_file="${jellyfin_config}/rffmpeg/.ssh/id_rsa.pub"
+    local output_pub_key="${OUTPUT_DIR}/rffmpeg/.ssh/id_rsa.pub"
+
+    # Get the public key content
+    local pub_key=""
+    if [[ -f "$pub_key_file" ]]; then
+        pub_key=$(sudo cat "$pub_key_file")
+    elif [[ -f "$output_pub_key" ]]; then
+        pub_key=$(cat "$output_pub_key")
+    else
+        show_error "No SSH public key found"
+        return 1
+    fi
+
+    show_info "Installing SSH key on Mac ($mac_ip)..."
+    echo ""
+    show_warning ">>> Enter your MAC password when prompted <<<"
+    echo ""
+
+    # Use ssh-copy-id style approach
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "${mac_user}@${mac_ip}" \
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$pub_key' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && sort -u ~/.ssh/authorized_keys -o ~/.ssh/authorized_keys"
+
+    if [[ $? -eq 0 ]]; then
+        show_result true "SSH key installed on Mac"
+        return 0
+    else
+        show_error "Failed to install SSH key on Mac"
+        return 1
+    fi
+}
+
+# Test if SSH from container to Mac works without password
+test_container_ssh_to_mac() {
+    local mac_user="$1"
+    local mac_ip="$2"
+
+    if sudo docker exec jellyfin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -o BatchMode=yes -o ConnectTimeout=5 \
+        -i /config/rffmpeg/.ssh/id_rsa \
+        "${mac_user}@${mac_ip}" "echo ok" 2>/dev/null | grep -q "ok"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 # ============================================================================
 # RFFMPEG CONFIGURATION
 # ============================================================================

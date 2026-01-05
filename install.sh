@@ -977,6 +977,84 @@ menu_documentation() {
     wait_for_user "Press Enter to return to menu"
 }
 
+menu_fix_ssh_keys() {
+    echo ""
+    show_info "Fix rffmpeg SSH Keys"
+    echo ""
+
+    # Get registered nodes
+    local nodes
+    nodes=$(get_registered_nodes)
+
+    if [[ -z "$nodes" ]]; then
+        show_warning "No nodes registered with rffmpeg"
+        wait_for_user "Press Enter to return to menu"
+        return
+    fi
+
+    local mac_user
+    mac_user=$(get_config "mac_user")
+
+    if [[ -z "$mac_user" ]]; then
+        mac_user=$(ask_input "Mac username (same for all Macs)" "$(whoami)")
+    fi
+
+    # Step 1: Ensure SSH key exists in container
+    show_info "Step 1: Checking SSH key in Jellyfin container..."
+    ensure_container_ssh_key
+
+    # Step 2: For each registered node, copy public key
+    echo ""
+    show_info "Step 2: Installing SSH key on registered Macs..."
+    echo ""
+
+    local success_count=0
+    local fail_count=0
+
+    while IFS= read -r node_ip; do
+        [[ -z "$node_ip" ]] && continue
+
+        echo -n "  $node_ip: "
+
+        # Check if already working
+        if test_container_ssh_to_mac "$mac_user" "$node_ip"; then
+            echo -e "${GREEN}✓ Already working${NC}"
+            ((success_count++))
+            continue
+        fi
+
+        # Try to copy key
+        if copy_ssh_key_to_mac "$mac_user" "$node_ip" 2>/dev/null; then
+            sleep 1
+            if test_container_ssh_to_mac "$mac_user" "$node_ip"; then
+                echo -e "${GREEN}✓ Fixed${NC}"
+                ((success_count++))
+            else
+                echo -e "${YELLOW}⚠ Key copied but still not working${NC}"
+                ((fail_count++))
+            fi
+        else
+            echo -e "${RED}✗ Failed${NC}"
+            ((fail_count++))
+        fi
+    done <<< "$nodes"
+
+    echo ""
+    if [[ $fail_count -eq 0 ]]; then
+        show_result true "All $success_count nodes have working SSH"
+    else
+        show_warning "$success_count working, $fail_count failed"
+        echo ""
+        show_info "For failed nodes, ensure:"
+        echo "  • Remote Login is enabled on the Mac"
+        echo "  • Firewall allows SSH (port 22)"
+        echo "  • Correct password was entered"
+    fi
+
+    echo ""
+    wait_for_user "Press Enter to return to menu"
+}
+
 # ============================================================================
 # MAIN MENU
 # ============================================================================
@@ -998,6 +1076,7 @@ show_main_menu() {
     if [[ "$install_status" != "first_time" ]]; then
         menu_options+=("⚖️  Change Node Weight")
         menu_options+=("➖ Remove Node")
+        menu_options+=("🔑 Fix SSH Keys")
     fi
 
     # Documentation always available
@@ -1108,6 +1187,9 @@ main_menu_loop() {
                 ;;
             "📖 Documentation")
                 menu_documentation
+                ;;
+            "🔑 Fix SSH Keys")
+                menu_fix_ssh_keys
                 ;;
             "📊 Monitor")
                 start_monitor

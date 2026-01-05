@@ -193,9 +193,40 @@ step_configure_nfs() {
     remote_setup_nfs_complete "$MAC_USER" "$MAC_IP" "$key_path" "$nas_ip" "$media_path" "$cache_path"
 }
 
+step_setup_rffmpeg_ssh() {
+    show_info "Setting up rffmpeg SSH access..."
+
+    # Step 1: Ensure SSH key exists in Jellyfin container
+    ensure_container_ssh_key
+
+    # Step 2: Check if container can already SSH to Mac
+    if test_container_ssh_to_mac "$MAC_USER" "$MAC_IP"; then
+        show_skip "SSH from Jellyfin to Mac already working"
+        return 0
+    fi
+
+    # Step 3: Copy the container's public key to Mac
+    copy_ssh_key_to_mac "$MAC_USER" "$MAC_IP"
+
+    # Step 4: Verify it works now
+    sleep 1
+    if test_container_ssh_to_mac "$MAC_USER" "$MAC_IP"; then
+        show_result true "rffmpeg can now SSH to Mac without password"
+        return 0
+    else
+        show_warning "SSH from container still requires password"
+        show_info "Jobs may fail until SSH keys are properly configured"
+        return 1
+    fi
+}
+
 step_register_rffmpeg() {
     show_step 4 4 "Register Mac"
 
+    # First, setup SSH access from container to Mac
+    step_setup_rffmpeg_ssh
+
+    echo ""
     show_info "Adding Mac to rffmpeg configuration..."
     echo ""
     show_warning ">>> Enter your SYNOLOGY password when prompted <<<"
