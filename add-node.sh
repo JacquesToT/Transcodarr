@@ -170,6 +170,9 @@ step_register_rffmpeg() {
     show_step 4 4 "Register Mac"
 
     show_info "Adding Mac to rffmpeg configuration..."
+    echo ""
+    show_warning ">>> Enter your SYNOLOGY password when prompted <<<"
+    echo ""
 
     # Calculate weight based on existing nodes
     # First node = weight 2, second = weight 3, etc.
