@@ -99,10 +99,11 @@ class DataCollector:
             # Check local paths exist (instead of NFS mounts)
             await self.check_local_paths()
 
-            # Get rffmpeg data directly
+            # Get rffmpeg data and active transcodes
             await asyncio.gather(
                 self.get_rffmpeg_status(),
                 self.get_rffmpeg_logs(),
+                self.get_active_transcodes(),
                 return_exceptions=True
             )
         else:
@@ -111,7 +112,7 @@ class DataCollector:
             await asyncio.gather(
                 self.check_ssh_connection(),
                 self.check_nfs_mounts(),
-                self.get_local_ffmpeg_processes(),
+                self.get_active_transcodes(),
                 return_exceptions=True
             )
 
@@ -249,8 +250,50 @@ class DataCollector:
             self._data.status.nfs_cache_error = str(e)[:50]
             return False, False
 
-    async def get_local_ffmpeg_processes(self) -> list[TranscodeJob]:
-        """Get active ffmpeg processes on this Mac."""
+    async def get_active_transcodes(self) -> list[TranscodeJob]:
+        """Get active ffmpeg/transcode processes.
+
+        On Synology: Check inside jellyfin container
+        On Mac: Check local processes
+        """
+        if self.config.is_synology:
+            return await self._get_container_ffmpeg_processes()
+        else:
+            return await self._get_local_ffmpeg_processes()
+
+    async def _get_container_ffmpeg_processes(self) -> list[TranscodeJob]:
+        """Get active ffmpeg processes inside jellyfin container."""
+        try:
+            # Check for ffmpeg processes in the container
+            cmd = self.config.get_docker_command("ps aux | grep -E 'ffmpeg|rffmpeg' | grep -v grep")
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+
+            if not stdout.strip():
+                self._data.active_transcodes = []
+                return []
+
+            jobs = []
+            for line in stdout.decode().strip().split("\n"):
+                if not line or "grep" in line:
+                    continue
+                job = self._parse_ffmpeg_process(line)
+                if job:
+                    jobs.append(job)
+
+            self._data.active_transcodes = jobs
+            return jobs
+
+        except Exception:
+            self._data.active_transcodes = []
+            return []
+
+    async def _get_local_ffmpeg_processes(self) -> list[TranscodeJob]:
+        """Get active ffmpeg processes on local Mac."""
         try:
             proc = await asyncio.create_subprocess_exec(
                 "pgrep", "-lf", "ffmpeg",
