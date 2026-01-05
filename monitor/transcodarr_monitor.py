@@ -193,8 +193,56 @@ class TranscodarrMonitor(App):
         self.notify("Configuration reloaded", severity="information")
 
 
+def check_ssh_before_ui(config) -> bool:
+    """Test SSH connection before starting UI.
+
+    This allows the user to enter their password in the terminal
+    BEFORE Textual takes over the screen.
+    """
+    import subprocess
+
+    print(f"Connecting to {config.nas_user}@{config.nas_ip}...")
+
+    cmd = config.get_ssh_command("echo ok")
+
+    try:
+        # Run with stdin/stdout connected to terminal (allows password input)
+        result = subprocess.run(
+            cmd,
+            timeout=30,
+            capture_output=False  # Let password prompt show in terminal
+        )
+
+        if result.returncode == 0:
+            print("✓ SSH connection successful\n")
+            return True
+        else:
+            print("✗ SSH connection failed")
+            return False
+
+    except subprocess.TimeoutExpired:
+        print("✗ SSH connection timed out")
+        return False
+    except Exception as e:
+        print(f"✗ SSH error: {e}")
+        return False
+
+
 def main():
     """Entry point for the monitor."""
+    import sys
+
+    config = get_config()
+
+    # Test SSH BEFORE starting UI so password prompt is visible
+    if not check_ssh_before_ui(config):
+        print("\nSSH connection required for monitoring.")
+        print(f"Make sure you can SSH to: {config.nas_user}@{config.nas_ip}")
+        print("\nTip: Set up SSH key authentication to avoid password prompts:")
+        print(f"  ssh-copy-id {config.nas_user}@{config.nas_ip}")
+        sys.exit(1)
+
+    # SSH OK, now start UI
     app = TranscodarrMonitor()
     app.run()
 
