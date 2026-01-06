@@ -172,7 +172,7 @@ The installer will:
 
 ### Server (Jellyfin Host)
 - Synology NAS with Container Manager (Docker)
-- Jellyfin in Docker container (linuxserver/jellyfin)
+- **Jellyfin using the `linuxserver/jellyfin` image** (required for DOCKER_MODS/rffmpeg support)
 - NFS enabled
 
 ## Performance
@@ -245,6 +245,37 @@ docker exec jellyfin rffmpeg add <MAC_IP> --weight 2
 ```bash
 docker exec jellyfin rffmpeg remove <MAC_IP>
 ```
+
+## Installer Menu Reference
+
+### Fix SSH Keys
+
+**What it does:**
+Repairs SSH key authentication between the Jellyfin container and Mac nodes. This is a troubleshooting tool that:
+
+1. **Checks the SSH key in the Jellyfin container** - Ensures the key exists at `/config/rffmpeg/.ssh/id_rsa` and has correct permissions for the `abc` user (which rffmpeg runs as)
+2. **Tests SSH connectivity to each registered Mac** - Verifies passwordless SSH works from the container
+3. **Reinstalls keys where needed** - Copies the public key to any Mac where authentication is failing
+
+**When to use:**
+- rffmpeg shows "connection refused" or "permission denied" errors
+- After recreating the Jellyfin container
+- After restoring from backup
+- When SSH authentication mysteriously stops working
+
+### Configure Monitor
+
+**What it does:**
+Configures the SSH connection settings used by the Transcodarr Monitor (the TUI dashboard). The Monitor runs from a Mac and needs SSH access to your Synology to fetch stats from the Jellyfin container.
+
+**Settings:**
+- **NAS IP** - Your Synology's IP address
+- **NAS User** - SSH username for connecting to the Synology
+
+**When to use:**
+- When first setting up the Monitor
+- If your NAS IP address changes
+- If you want to use a different SSH user
 
 ## Uninstall
 
