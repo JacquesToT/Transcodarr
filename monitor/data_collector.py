@@ -669,6 +669,14 @@ class DataCollector:
                     f'{mac_user}@{ip} "{stats_script}"'
                 )
                 cmd = self.config.get_docker_command(ssh_in_container)
+
+                # Debug: log the command
+                import os
+                debug_file = os.path.expanduser("~/.transcodarr/monitor_debug.log")
+                with open(debug_file, "a") as f:
+                    f.write(f"\n--- SSH to Mac ---\n")
+                    f.write(f"cmd: {cmd}\n")
+                    f.write(f"ssh_in_container: {ssh_in_container}\n")
             else:
                 # On Mac: run SSH directly
                 cmd = [
@@ -694,6 +702,14 @@ class DataCollector:
 
             output = stdout.decode()
             error_output = stderr.decode().strip()
+
+            # Debug: log SSH result
+            import os
+            debug_file = os.path.expanduser("~/.transcodarr/monitor_debug.log")
+            with open(debug_file, "a") as f:
+                f.write(f"SSH returncode: {proc.returncode}\n")
+                f.write(f"SSH stdout: {output[:300]}\n")
+                f.write(f"SSH stderr: {error_output[:200]}\n")
 
             if proc.returncode == 0 and "STATS_CPU_START" in output:
                 node.is_online = True
