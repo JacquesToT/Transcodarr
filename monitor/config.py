@@ -24,6 +24,7 @@ class TranscodarrConfig:
     nas_user: str = ""  # Loaded from config, with fallbacks
 
     # Jellyfin settings
+    jellyfin_container_name: str = "jellyfin"
     jellyfin_port: int = 8096
     jellyfin_api_key: Optional[str] = None
 
@@ -113,6 +114,10 @@ class TranscodarrConfig:
                     config.media_path = cfg["media_path"]
                 if "cache_path" in cfg:
                     config.cache_path = cfg["cache_path"]
+                if "jellyfin_container_name" in cfg:
+                    config.jellyfin_container_name = cfg["jellyfin_container_name"]
+                if "jellyfin_port" in cfg:
+                    config.jellyfin_port = cfg["jellyfin_port"]
                 if "jellyfin_api_key" in cfg:
                     config.jellyfin_api_key = cfg["jellyfin_api_key"]
 
@@ -195,11 +200,11 @@ class TranscodarrConfig:
         """
         if self.is_synology:
             # On Synology, docker typically requires sudo
-            full_cmd = f"sudo docker exec jellyfin {docker_cmd}"
+            full_cmd = f"sudo docker exec {self.jellyfin_container_name} {docker_cmd}"
             return self.get_local_command(full_cmd)
         else:
             # Via SSH, the remote user likely has docker permissions
-            full_cmd = f"docker exec jellyfin {docker_cmd}"
+            full_cmd = f"docker exec {self.jellyfin_container_name} {docker_cmd}"
             return self.get_ssh_command(full_cmd)
 
 
