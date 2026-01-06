@@ -393,6 +393,8 @@ remote_install_ffmpeg() {
         fi
         brew tap homebrew-ffmpeg/ffmpeg 2>&1 || true
         brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-fdk-aac 2>&1 || brew install ffmpeg 2>&1 || true
+        # Link ffmpeg if installed but not linked
+        brew link --overwrite ffmpeg 2>&1 || brew link --overwrite homebrew-ffmpeg/ffmpeg/ffmpeg 2>&1 || true
     '
 
     if remote_check_ffmpeg "$mac_user" "$mac_ip" "$key_path"; then
