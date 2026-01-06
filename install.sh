@@ -440,24 +440,32 @@ wizard_synology() {
         echo ""
         show_warning ">>> Enter your SYNOLOGY password when prompted <<<"
         echo ""
-        show_info "Adding Mac to rffmpeg..."
 
-        if sudo docker exec jellyfin rffmpeg add "$mac_ip" --weight "$weight" 2>/dev/null; then
-            echo ""
-            show_result true "Mac added to rffmpeg!"
+        # Check if Mac is already registered
+        if sudo docker exec jellyfin rffmpeg status 2>/dev/null | grep -q "$mac_ip"; then
+            show_skip "Mac is already registered in rffmpeg"
             echo ""
             show_info "Current rffmpeg status:"
             sudo docker exec jellyfin rffmpeg status 2>/dev/null || true
         else
-            echo ""
-            show_error "Could not add Mac to rffmpeg"
-            show_info "This can happen if:"
-            echo "  - DOCKER_MODS is not configured"
-            echo "  - Container was not restarted"
-            echo "  - rffmpeg is still initializing"
-            echo ""
-            show_info "Try manually after container restart:"
-            echo -e "  ${GREEN}sudo docker exec jellyfin rffmpeg add $mac_ip --weight $weight${NC}"
+            show_info "Adding Mac to rffmpeg..."
+            if sudo docker exec jellyfin rffmpeg add "$mac_ip" --weight "$weight" 2>&1 | grep -v "DeprecationWarning"; then
+                echo ""
+                show_result true "Mac added to rffmpeg!"
+                echo ""
+                show_info "Current rffmpeg status:"
+                sudo docker exec jellyfin rffmpeg status 2>/dev/null || true
+            else
+                echo ""
+                show_error "Could not add Mac to rffmpeg"
+                show_info "This can happen if:"
+                echo "  - DOCKER_MODS is not configured"
+                echo "  - Container was not restarted"
+                echo "  - rffmpeg is still initializing"
+                echo ""
+                show_info "Try manually after container restart:"
+                echo -e "  ${GREEN}sudo docker exec jellyfin rffmpeg add $mac_ip --weight $weight${NC}"
+            fi
         fi
     else
         echo ""
