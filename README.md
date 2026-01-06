@@ -113,9 +113,17 @@ services:
 
 > **Note:** Find your PUID/PGID by running `id` in SSH on your Synology.
 
+> ⏳ **FFmpeg takes a while to install** (compiling from source). Be patient and make sure Jellyfin is started before running the installer.
+
 ---
 
 ## Step 3: Configure NFS on your Synology
+
+### Enable User Home Service
+
+1. Open **Control Panel** → **User & Group** → **Advanced**
+2. Check **"Enable user home service"**
+3. Click **Apply**
 
 ### Enable NFS Service
 
@@ -248,6 +256,19 @@ Configures SSH settings for the Transcodarr Monitor (TUI dashboard):
 |-------|--------|-------|
 | 1080p BluRay (33 Mbps) | H.264 4 Mbps | ~7x realtime |
 | 720p video | H.264 2 Mbps | ~13x realtime |
+
+---
+
+## Tested On
+
+**Synology NAS:**
+- DS1821+
+- DS916+
+
+**Mac (Apple Silicon):**
+- Mac mini M1
+- Mac mini M4
+- Mac Studio M4
 
 ---
 
