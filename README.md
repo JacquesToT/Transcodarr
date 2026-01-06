@@ -4,6 +4,35 @@
 
 Offload live video transcoding from your NAS to Apple Silicon Macs with hardware-accelerated VideoToolbox encoding.
 
+> ⚠️ **Backup First!** Before proceeding, backup your Jellyfin configuration folder and docker-compose file.
+
+---
+
+## Security Considerations
+
+This project creates network pathways between your NAS and Mac(s). Understand the risks:
+
+| Risk | Description |
+|------|-------------|
+| **SSH keys in container** | Private key stored in Jellyfin container. If container is compromised, attacker has SSH access to all Mac nodes. |
+| **Remote code execution** | Jellyfin can execute FFmpeg commands on Mac nodes. Compromised Jellyfin = arbitrary code execution on Macs. |
+| **NFS "Map all to admin"** | Default NFS config maps all connections to admin. Compromised Mac = full read (or write for cache) access. |
+| **NFS open to network** | Default NFS permissions allow any IP (`*`). Restrict to Mac IP(s) for better security. |
+| **Sudo on Mac** | Installer requires root access for mount points, LaunchDaemons, and energy settings. |
+| **Sleep disabled** | Mac sleep is disabled, increasing exposure time. |
+
+**Recommendations:**
+- Use a dedicated user account on Mac nodes
+- Restrict NFS permissions to specific Mac IPs instead of `*`
+- Keep Jellyfin and Docker updated
+- Use a firewall to limit access to NFS ports
+
+---
+
+*This project was 95% built with [Claude Code](https://claude.com/claude-code).*
+
+---
+
 ## How It Works
 
 ```
@@ -40,13 +69,20 @@ Collect these values:
 |------|---------|---------------|
 | **Synology IP** | `192.168.1.100` | Control Panel → Network |
 | **Mac IP** | `192.168.1.50` | System Settings → Network |
-| **Mac Username** | `nick` | Terminal: `whoami` |
+| **Mac Username** | `user_name` | Terminal: `whoami` |
 | **Media Path** | `/volume1/data/media` | File Station → Right-click → Properties |
 | **Jellyfin Config** | `/volume1/docker/jellyfin` | Your docker-compose volume |
 
 ---
 
-## Step 1: Setup Jellyfin
+## Step 1: Enable Remote Login on your Mac
+
+1. Open **System Settings** → **General** → **Sharing**
+2. Enable **"Remote Login"**
+
+---
+
+## Step 2: Setup Jellyfin
 
 Create or update your Jellyfin container with rffmpeg support:
 
@@ -79,9 +115,7 @@ services:
 
 ---
 
-## Step 2: Configure NFS
-
-The Mac needs NFS access to your media and cache folders.
+## Step 3: Configure NFS on your Synology
 
 ### Enable NFS Service
 
@@ -105,14 +139,7 @@ Go to **Control Panel** → **Shared Folder**, select each folder, click **Edit*
 
 ---
 
-## Step 3: Install Transcodarr
-
-### On your Mac
-
-1. Open **System Settings** → **General** → **Sharing**
-2. Enable **"Remote Login"**
-
-### On your Synology
+## Step 4: Install Transcodarr
 
 SSH into your Synology and run:
 
