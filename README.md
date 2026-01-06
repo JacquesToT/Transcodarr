@@ -170,7 +170,9 @@ Go to **Control Panel** → **Shared Folder**, select each shared folder, click 
 
 > **Tip:** For better security, create a dedicated shared folder (e.g., `jellyfin-cache`) instead of exposing the entire `docker` folder via NFS.
 
-### Install Git
+---
+
+## Step 4: Install Git on your Synology
 
 1. Open **Package Center**
 2. Search for **"Git"**
@@ -178,7 +180,7 @@ Go to **Control Panel** → **Shared Folder**, select each shared folder, click 
 
 ---
 
-## Step 4: Install Transcodarr
+## Step 5: Install Transcodarr
 
 SSH into your Synology and run:
 
