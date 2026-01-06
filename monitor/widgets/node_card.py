@@ -101,10 +101,13 @@ class NodeCard(Static):
                 f"[bold]🖥️ {self.node.hostname}[/bold]"
             )
         else:
+            # Escape error message to prevent Rich markup interpretation
+            # Replace [ with \\[ to escape
+            safe_error = self.node.error.replace("[", "\\[").replace("]", "\\]")
             header_text = (
                 f"[{status_color}]{status_icon}[/{status_color}] "
                 f"[bold dim]🖥️ {self.node.hostname}[/bold dim] "
-                f"[red][{self.node.error}][/red]"
+                f"[red]({safe_error})[/red]"
             )
         header.update(header_text)
 

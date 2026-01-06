@@ -604,11 +604,12 @@ class DataCollector:
         )
 
         try:
-            # Remote command to get all Mac stats (use double quotes for inner command)
+            # Remote command to get all Mac stats
+            # Use markers that won't be interpreted by zsh as operators
             stats_script = (
-                'echo ===CPU=== && top -l 1 -n 0 | grep CPU && '
-                'echo ===MEM=== && vm_stat | head -10 && sysctl hw.memsize && '
-                'echo ===FFMPEG=== && ps aux | grep ffmpeg | grep -v grep'
+                'echo STATS_CPU_START && top -l 1 -n 0 | grep CPU && '
+                'echo STATS_MEM_START && vm_stat | head -10 && sysctl hw.memsize && '
+                'echo STATS_FFMPEG_START && ps aux | grep ffmpeg | grep -v grep'
             )
 
             if self.config.is_synology:
@@ -648,7 +649,7 @@ class DataCollector:
             output = stdout.decode()
             error_output = stderr.decode().strip()
 
-            if proc.returncode == 0 and "===CPU===" in output:
+            if proc.returncode == 0 and "STATS_CPU_START" in output:
                 node.is_online = True
                 self._parse_mac_stats(output, node)
             else:
@@ -676,26 +677,27 @@ class DataCollector:
 
     def _parse_mac_stats(self, output: str, node: NodeStats) -> None:
         """Parse Mac stats output and update NodeStats object."""
-        sections = output.split("===")
+        # Split by our markers
+        sections = re.split(r'STATS_(\w+)_START', output)
 
         for i, section in enumerate(sections):
             section = section.strip()
 
-            if section.startswith("CPU"):
+            if section == "CPU" and i + 1 < len(sections):
                 # Parse: CPU usage: 12.34% user, 5.67% sys, 81.99% idle
-                content = sections[i + 1] if i + 1 < len(sections) else ""
+                content = sections[i + 1]
                 match = re.search(r"(\d+\.?\d*)% user.*?(\d+\.?\d*)% sys", content)
                 if match:
                     user = float(match.group(1))
                     sys_pct = float(match.group(2))
                     node.cpu_percent = user + sys_pct
 
-            elif section.startswith("MEM"):
-                content = sections[i + 1] if i + 1 < len(sections) else ""
+            elif section == "MEM" and i + 1 < len(sections):
+                content = sections[i + 1]
                 self._parse_memory_stats(content, node)
 
-            elif section.startswith("FFMPEG"):
-                content = sections[i + 1] if i + 1 < len(sections) else ""
+            elif section == "FFMPEG" and i + 1 < len(sections):
+                content = sections[i + 1]
                 jobs = self._parse_ffmpeg_processes(content, node.ip)
                 node.transcodes_today = self._count_transcodes_today()
 
