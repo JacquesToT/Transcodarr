@@ -2,9 +2,9 @@
 
 **Distributed Live Transcoding for Jellyfin using Apple Silicon Macs**
 
-Offload live video transcoding from your NAS to Apple Silicon Macs with hardware-accelerated VideoToolbox encoding. Get 7-13x realtime transcoding speeds.
+Offload live video transcoding from your NAS to Apple Silicon Macs with hardware-accelerated VideoToolbox encoding.
 
-## What It Does
+## How It Works
 
 ```
 ┌─────────────────┐         ┌─────────────────┐
@@ -17,136 +17,104 @@ Offload live video transcoding from your NAS to Apple Silicon Macs with hardware
          │                           │
          │         NFS               │
          └───────────────────────────┘
-              Shared cache folder
+              Shared media & cache
 ```
 
----
+## Requirements
 
-## Prerequisites
+**Synology NAS:**
+- Docker / Container Manager
+- NFS enabled
+- Jellyfin using `linuxserver/jellyfin` image (required for rffmpeg)
 
-### Same Username on All Macs
+**Mac (Apple Silicon):**
+- M1/M2/M3/M4
+- macOS Sequoia 15.x or later
+- Remote Login (SSH) enabled
 
-> **IMPORTANT**: All Mac nodes MUST use the same SSH username.
+## Before You Start
 
-rffmpeg (the load balancer) uses a single SSH user configuration for all remote hosts. If you have multiple Macs:
-- Use the **same username** on all Macs, OR
-- Create a dedicated user (e.g., `transcodarr`) on each Mac
-
-**Example**: If your first Mac uses username `nick`, all other Macs must also have a user `nick`.
-
-### Gather This Information First
-
-Before starting, collect these values:
+Collect these values:
 
 | What | Example | Where to find |
 |------|---------|---------------|
-| **Synology IP** | `192.168.1.100` | Control Panel → Network → Network Interface |
-| **Synology Username** | `admin` | Your login username |
-| **Media Path** | `/volume1/data/media` | File Station → Right-click folder → Properties |
+| **Synology IP** | `192.168.1.100` | Control Panel → Network |
 | **Mac IP** | `192.168.1.50` | System Settings → Network |
-| **Mac Username** | `nick` | Terminal: `whoami` (must be same on all Macs!) |
+| **Mac Username** | `nick` | Terminal: `whoami` |
+| **Media Path** | `/volume1/data/media` | File Station → Right-click → Properties |
+| **Jellyfin Config** | `/volume1/docker/jellyfin` | Your docker-compose volume |
 
 ---
 
-## Setup Synology
+## Step 1: Setup Jellyfin
 
-### 1. Enable SSH
+Create or update your Jellyfin container with rffmpeg support:
 
-1. Open **Control Panel** → **Terminal & SNMP**
-2. Check **"Enable SSH service"**
-3. Click **Apply**
-
-### 2. Enable User Home Service
-
-1. Open **Control Panel** → **User & Group** → **Advanced**
-2. Check **"Enable user home service"**
-3. Click **Apply**
-
-### 3. Install Git
-
-1. Open **Package Center**
-2. Search for **"Git"**
-3. Click **Install**
-
-> **Note:** If Git doesn't appear, go to **Package Center** → **Settings** → **Package Sources** and make sure the Synology official source is enabled.
-
-### 4. Install Homebrew & Gum
-
-SSH into your Synology and run:
-
-```bash
-ssh your-username@your-synology-ip
+```yaml
+services:
+  jellyfin:
+    image: linuxserver/jellyfin
+    container_name: jellyfin
+    environment:
+      - PUID=1026                                      # Your user ID (run: id)
+      - PGID=100                                       # Your group ID (run: id)
+      - TZ=Europe/Amsterdam                            # Your timezone
+      - JELLYFIN_PublishedServerUrl=192.168.1.100     # Your Synology IP
+      - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg # Required for remote transcoding
+      - FFMPEG_PATH=/usr/local/bin/ffmpeg             # Required for rffmpeg
+    volumes:
+      - /volume1/docker/jellyfin:/config
+      - /volume1/data/media:/data/media
+      - /volume1/docker/jellyfin/cache:/cache         # Transcode cache (needs NFS)
+    ports:
+      - 8096:8096/tcp
+      - 7359:7359/udp
+    network_mode: bridge
+    security_opt:
+      - no-new-privileges:true
+    restart: always
 ```
 
-Then install Homebrew:
+> **Note:** Find your PUID/PGID by running `id` in SSH on your Synology.
 
-```bash
-git clone https://github.com/MrCee/Synology-Homebrew.git ~/Synology-Homebrew
-~/Synology-Homebrew/install-synology-homebrew.sh
-```
+---
 
-- Choose **option 1 (Minimal)**
-- Close your terminal
-- Reconnect via SSH
+## Step 2: Configure NFS
 
-Then install Gum:
+The Mac needs NFS access to your media and cache folders.
 
-```bash
-brew install gum
-```
-
-### 5. Configure NFS
-
-#### Enable NFS Service
+### Enable NFS Service
 
 1. Open **Control Panel** → **File Services** → **NFS**
 2. Check **"Enable NFS service"**
-3. Set **Maximum NFS protocol** to **NFSv4.1**
+3. Set Maximum NFS protocol to **NFSv4.1**
 4. Click **Apply**
 
-#### Set NFS Permissions on Folders
+### Set NFS Permissions
 
-For your **media folder** (e.g., `/volume1/data/media`):
+Go to **Control Panel** → **Shared Folder**, select each folder, click **Edit** → **NFS Permissions** → **Create**:
 
-1. Open **Control Panel** → **Shared Folder**
-2. Select your media folder → **Edit** → **NFS Permissions**
-3. Click **Create** and add:
-   - **Hostname or IP:** `*` (or your Mac's IP for more security)
-   - **Privilege:** Read Only
-   - **Squash:** Map all users to admin
-   - **Security:** sys
-   - **Enable asynchronous:** ✓
-   - **Allow connections from non-privileged ports:** ✓
-   - **Allow users to access mounted subfolders:** ✓
-4. Click **OK** → **Save**
+| Folder | Privilege | Squash |
+|--------|-----------|--------|
+| Media (e.g. `/volume1/data/media`) | Read Only | Map all users to admin |
+| Cache (e.g. `/volume1/docker/jellyfin/cache`) | **Read/Write** | Map all users to admin |
 
-Repeat for your **Jellyfin cache folder** (e.g., `/volume1/docker/jellyfin/cache`), but set **Privilege** to **Read/Write**.
+**For both folders, also enable:**
+- ✓ Allow connections from non-privileged ports
+- ✓ Allow users to access mounted subfolders
 
 ---
 
-## Setup Mac
+## Step 3: Install Transcodarr
 
-The only thing you need to do on your Mac is enable SSH:
-
-### Enable Remote Login (SSH)
+### On your Mac
 
 1. Open **System Settings** → **General** → **Sharing**
 2. Enable **"Remote Login"**
-3. Set **"Allow access for:"** to your user or "All users"
 
-> **Note:** Everything else (Homebrew, FFmpeg, mount points) will be installed automatically by the Transcodarr installer via SSH.
+### On your Synology
 
----
-
-## Install Transcodarr
-
-SSH into your Synology:
-
-```bash
-ssh your-username@your-synology-ip
-```
-
-Then run:
+SSH into your Synology and run:
 
 ```bash
 git clone https://github.com/JacquesToT/Transcodarr.git ~/Transcodarr
@@ -154,80 +122,30 @@ cd ~/Transcodarr && ./install.sh
 ```
 
 The installer will:
-1. Ask for your Mac's IP address and username
-2. Connect to your Mac via SSH (you'll enter your Mac password once)
-3. Automatically install Homebrew and FFmpeg on your Mac
-4. Create mount points and configure NFS mounts
-5. Handle Mac reboot if needed (and wait for it to come back)
-6. Set up rffmpeg configuration
+1. Connect to your Mac via SSH
+2. Install Homebrew and FFmpeg with VideoToolbox
+3. Create mount points and configure NFS
+4. Handle Mac reboot if needed
+5. Register the Mac with rffmpeg
 
-**That's it!** The entire setup is done from your Synology.
+**That's it!** Start a video in Jellyfin and watch it transcode on your Mac.
 
-## Requirements
+---
 
-### Mac (Transcode Node)
-- macOS Sequoia 15.x or later
-- Apple Silicon (M1/M2/M3/M4)
-- Network connection to NAS
+## Adding Another Mac
 
-### Server (Jellyfin Host)
-- Synology NAS with Container Manager (Docker)
-- **Jellyfin using the `linuxserver/jellyfin` image** (required for DOCKER_MODS/rffmpeg support)
-- NFS enabled
+To add more Macs to your transcoding cluster:
 
-## Performance
+> **Important:** All Macs must use the **same username** for SSH.
+> rffmpeg uses a single SSH user configuration for all nodes.
 
-| Input | Output | Speed |
-|-------|--------|-------|
-| 1080p BluRay REMUX (33 Mbps) | H.264 4 Mbps | 7.5x realtime |
-| 720p video | H.264 2 Mbps | 13.8x realtime |
-| 720p video | HEVC 1.5 Mbps | 12x realtime |
+1. Enable **Remote Login** on the new Mac (System Settings → Sharing)
+2. Run the installer on your Synology: `cd ~/Transcodarr && ./install.sh`
+3. Select **"➕ Add a new Mac node"**
 
-## Architecture
+The installer will configure everything automatically.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                      Synology NAS                        │
-│  ┌─────────────────┐    ┌─────────────────────────────┐ │
-│  │    Jellyfin     │    │         NFS Shares          │ │
-│  │   + rffmpeg     │    │  • /volume1/data/media      │ │
-│  │     mod         │    │  • /volume1/.../cache       │ │
-│  └────────┬────────┘    └─────────────────────────────┘ │
-└───────────│─────────────────────────────────────────────┘
-            │ SSH (FFmpeg commands)
-            ▼
-┌─────────────────────────────────────────────────────────┐
-│                    Mac Mini / Mac Studio                 │
-│  ┌─────────────────┐    ┌─────────────────────────────┐ │
-│  │     FFmpeg      │    │       NFS Mounts            │ │
-│  │  VideoToolbox   │    │  • /data/media              │ │
-│  │                 │    │  • /config/cache            │ │
-│  └─────────────────┘    └─────────────────────────────┘ │
-└─────────────────────────────────────────────────────────┘
-```
-
-## Troubleshooting
-
-### "Permission denied" SSH error
-1. Check if Remote Login is enabled on Mac (System Settings → Sharing)
-2. Verify the SSH key is in `~/.ssh/authorized_keys`
-3. Check permissions: `chmod 600 ~/.ssh/authorized_keys`
-
-### "Host marked as bad" in rffmpeg
-```bash
-docker exec jellyfin rffmpeg clear
-docker exec jellyfin rffmpeg add <MAC_IP> --weight 2
-```
-
-### Mac not reachable
-- Check if Mac is not sleeping
-- Check firewall settings (port 22 for SSH)
-- Ping test: `ping <MAC_IP>`
-
-### NFS mount fails
-1. Verify NFS service is enabled on Synology
-2. Check NFS permissions on the shared folder
-3. Test mount manually: `mount -t nfs <NAS_IP>:/volume1/data/media /data/media`
+---
 
 ## Commands
 
@@ -236,7 +154,7 @@ docker exec jellyfin rffmpeg add <MAC_IP> --weight 2
 docker exec jellyfin rffmpeg status
 ```
 
-### Add node
+### Add node manually
 ```bash
 docker exec jellyfin rffmpeg add <MAC_IP> --weight 2
 ```
@@ -246,43 +164,65 @@ docker exec jellyfin rffmpeg add <MAC_IP> --weight 2
 docker exec jellyfin rffmpeg remove <MAC_IP>
 ```
 
+### Clear bad host status
+```bash
+docker exec jellyfin rffmpeg clear
+```
+
+---
+
+## Troubleshooting
+
+### "Permission denied" SSH error
+1. Check Remote Login is enabled on Mac (System Settings → Sharing)
+2. Run **"Fix SSH Keys"** from the installer menu
+3. Verify permissions: `chmod 600 ~/.ssh/authorized_keys`
+
+### "Host marked as bad" in rffmpeg
+```bash
+docker exec jellyfin rffmpeg clear
+docker exec jellyfin rffmpeg status
+```
+
+### NFS mount fails on Mac
+1. Verify NFS is enabled on Synology
+2. Check NFS permissions include "non-privileged ports"
+3. Test manually: `sudo mount -t nfs <NAS_IP>:/volume1/data/media /data/media`
+
+### Mac not reachable
+- Ensure Mac is not sleeping (Energy settings)
+- Check firewall allows SSH (port 22)
+- Test: `ping <MAC_IP>`
+
+---
+
 ## Installer Menu Reference
 
 ### Fix SSH Keys
 
-**What it does:**
-Repairs SSH key authentication between the Jellyfin container and Mac nodes. This is a troubleshooting tool that:
+Repairs SSH key authentication between Jellyfin and Mac nodes:
+1. Checks the SSH key in the container has correct permissions
+2. Tests SSH connectivity to each registered Mac
+3. Reinstalls keys where authentication is failing
 
-1. **Checks the SSH key in the Jellyfin container** - Ensures the key exists at `/config/rffmpeg/.ssh/id_rsa` and has correct permissions for the `abc` user (which rffmpeg runs as)
-2. **Tests SSH connectivity to each registered Mac** - Verifies passwordless SSH works from the container
-3. **Reinstalls keys where needed** - Copies the public key to any Mac where authentication is failing
-
-**When to use:**
-- rffmpeg shows "connection refused" or "permission denied" errors
-- After recreating the Jellyfin container
-- After restoring from backup
-- When SSH authentication mysteriously stops working
+**Use when:** rffmpeg shows connection errors, after recreating the Jellyfin container, or after restoring from backup.
 
 ### Configure Monitor
 
-**What it does:**
-Configures the SSH connection settings used by the Transcodarr Monitor (the TUI dashboard). The Monitor runs from a Mac and needs SSH access to your Synology to fetch stats from the Jellyfin container.
-
-**Settings:**
+Configures SSH settings for the Transcodarr Monitor (TUI dashboard):
 - **NAS IP** - Your Synology's IP address
-- **NAS User** - SSH username for connecting to the Synology
+- **NAS User** - SSH username for the Synology
 
-**When to use:**
-- When first setting up the Monitor
-- If your NAS IP address changes
-- If you want to use a different SSH user
+---
 
-## Uninstall
+## Performance
 
-On Mac:
-```bash
-cd ~/Transcodarr && ./uninstall.sh
-```
+| Input | Output | Speed |
+|-------|--------|-------|
+| 1080p BluRay (33 Mbps) | H.264 4 Mbps | ~7x realtime |
+| 720p video | H.264 2 Mbps | ~13x realtime |
+
+---
 
 ## License
 
