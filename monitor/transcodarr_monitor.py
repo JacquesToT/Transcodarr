@@ -198,8 +198,8 @@ class TranscodarrMonitor(App):
             if not container.children or not isinstance(
                 container.children[0], Static
             ):
-                container.remove_children()
-                container.mount(Static(
+                await container.remove_children()
+                await container.mount(Static(
                     "[dim]No transcode nodes registered.\n\n"
                     "Add nodes with: rffmpeg add <mac-ip>[/dim]",
                     classes="no-nodes"
@@ -258,7 +258,7 @@ class TranscodarrMonitor(App):
                         id=f"node-{node.ip.replace('.', '-')}"
                     )
                     self._node_cards[node.ip] = card
-                    container.mount(card)
+                    await container.mount(card)
                     with open(debug_file, "a") as f:
                         f.write(f"Successfully mounted card for {node.ip}\n")
                 except Exception as e:
