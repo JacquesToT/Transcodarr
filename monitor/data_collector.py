@@ -571,21 +571,22 @@ class DataCollector:
         )
 
         try:
-            # Remote command to get all Mac stats
+            # Remote command to get all Mac stats (use double quotes for inner command)
             stats_script = (
-                'echo "===CPU===" && top -l 1 -n 0 | grep "CPU usage" && '
-                'echo "===MEM===" && vm_stat | head -10 && sysctl hw.memsize && '
-                'echo "===FFMPEG===" && ps aux | grep -E "[f]fmpeg" | head -10'
+                'echo ===CPU=== && top -l 1 -n 0 | grep CPU && '
+                'echo ===MEM=== && vm_stat | head -10 && sysctl hw.memsize && '
+                'echo ===FFMPEG=== && ps aux | grep ffmpeg | grep -v grep'
             )
 
             if self.config.is_synology:
                 # On Synology: run SSH from inside the jellyfin container
                 # The container has SSH keys set up for Mac nodes
+                # Use double quotes around the remote command to avoid quoting issues
                 ssh_in_container = (
-                    f'ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no '
+                    f'ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no '
                     f'-o UserKnownHostsFile=/dev/null -o LogLevel=ERROR '
                     f'-o BatchMode=yes -i /config/rffmpeg/.ssh/id_rsa '
-                    f'{mac_user}@{ip} \'{stats_script}\''
+                    f'{mac_user}@{ip} "{stats_script}"'
                 )
                 cmd = self.config.get_docker_command(ssh_in_container)
             else:
@@ -611,13 +612,25 @@ class DataCollector:
                 timeout=10
             )
 
-            if proc.returncode == 0:
+            output = stdout.decode()
+            error_output = stderr.decode().strip()
+
+            if proc.returncode == 0 and "===CPU===" in output:
                 node.is_online = True
-                self._parse_mac_stats(stdout.decode(), node)
+                self._parse_mac_stats(output, node)
             else:
                 node.is_online = False
-                error_msg = stderr.decode().strip()[:50] or "SSH failed"
-                node.error = error_msg
+                # Provide helpful error message
+                if "Permission denied" in error_output:
+                    node.error = "SSH key rejected"
+                elif "Connection refused" in error_output:
+                    node.error = "SSH refused"
+                elif "No route" in error_output or "unreachable" in error_output.lower():
+                    node.error = "Host unreachable"
+                elif error_output:
+                    node.error = error_output[:40]
+                else:
+                    node.error = f"Exit code {proc.returncode}"
 
         except asyncio.TimeoutError:
             node.is_online = False

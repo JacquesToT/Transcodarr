@@ -152,8 +152,24 @@ class TranscodarrMonitor(App):
             status_bar = self.query_one("#status-bar", StatusBar)
             status_bar.update_status(data.status)
 
-            # Update node cards
-            await self._update_node_cards(data.node_stats, data.active_transcodes)
+            # Update node cards - use node_stats if available, else create from rffmpeg_hosts
+            nodes = data.node_stats
+            if not nodes and data.rffmpeg_hosts:
+                # Fallback: create basic NodeStats from rffmpeg_hosts
+                from .data_collector import NodeStats
+                nodes = [
+                    NodeStats(
+                        hostname=host.get("hostname", "Unknown"),
+                        ip=host.get("hostname", ""),
+                        state=host.get("state", "unknown"),
+                        weight=int(host.get("weight", 1)),
+                        is_online=False,
+                        error="Stats unavailable"
+                    )
+                    for host in data.rffmpeg_hosts
+                ]
+
+            await self._update_node_cards(nodes, data.active_transcodes)
 
             # Update logs
             log_panel = self.query_one("#log-panel", LogPanel)
