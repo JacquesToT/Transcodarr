@@ -20,10 +20,12 @@ This project creates network pathways between your NAS and Mac(s). Understand th
 | **NFS open to network** | Default NFS permissions allow any IP (`*`). Restrict to Mac IP(s) for better security. |
 | **Sudo on Mac** | Installer requires root access for mount points, LaunchDaemons, and energy settings. |
 | **Sleep disabled** | Mac sleep is disabled, increasing exposure time. |
+| **NFS at folder level** | Synology NFS permissions are set per shared folder, not subfolders. Enabling NFS on `docker` exposes the entire folder. |
 
 **Recommendations:**
 - Use a dedicated user account on Mac nodes
 - Restrict NFS permissions to specific Mac IPs instead of `*`
+- Create dedicated shared folders for media/cache instead of exposing `docker`
 - Keep Jellyfin and Docker updated
 - Use a firewall to limit access to NFS ports
 
@@ -153,16 +155,20 @@ sudo docker start jellyfin
 
 ### Set NFS Permissions
 
-Go to **Control Panel** → **Shared Folder**, select each folder, click **Edit** → **NFS Permissions** → **Create**:
+> **Note:** Synology NFS permissions work at the **shared folder level**, not subfolders. You need to enable NFS on the parent shared folders (`data` and `docker`), or create dedicated shared folders for more granular control.
 
-| Folder | Privilege | Squash |
-|--------|-----------|--------|
-| Media (e.g. `/volume1/data/media`) | Read Only | Map all users to admin |
-| Cache (e.g. `/volume1/docker/jellyfin/cache`) | **Read/Write** | Map all users to admin |
+Go to **Control Panel** → **Shared Folder**, select each shared folder, click **Edit** → **NFS Permissions** → **Create**:
+
+| Shared Folder | Privilege | Squash |
+|---------------|-----------|--------|
+| `data` (contains your media) | Read Only | Map all users to admin |
+| `docker` (contains jellyfin/cache) | **Read/Write** | Map all users to admin |
 
 **For both folders, also enable:**
 - ✓ Allow connections from non-privileged ports
 - ✓ Allow users to access mounted subfolders
+
+> **Tip:** For better security, create a dedicated shared folder (e.g., `jellyfin-cache`) instead of exposing the entire `docker` folder via NFS.
 
 ---
 
