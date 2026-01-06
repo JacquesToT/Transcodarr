@@ -10,7 +10,7 @@ import asyncio
 import re
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 from enum import Enum
 
@@ -26,16 +26,41 @@ class ConnectionStatus(Enum):
 
 
 @dataclass
+class NodeStats:
+    """Statistics for a transcode node (Mac)."""
+    hostname: str
+    ip: str
+    cpu_percent: float = 0.0
+    memory_used_gb: float = 0.0
+    memory_total_gb: float = 0.0
+    memory_percent: float = 0.0
+    network_down_mbps: float = 0.0
+    network_up_mbps: float = 0.0
+    transcodes_today: int = 0
+    state: str = "unknown"  # idle, active, bad
+    weight: int = 1
+    is_online: bool = False
+    error: str = ""
+
+
+@dataclass
 class TranscodeJob:
     """Represents an active transcode job."""
     filename: str
+    node_ip: str = ""  # Which node is running this job
+    pid: int = 0
     input_codec: str = ""
     output_codec: str = ""
+    input_resolution: str = ""  # e.g., "1920x1080"
+    output_resolution: str = ""  # e.g., "1280x720"
+    fps: float = 0.0  # Current encoding fps
+    speed: str = ""  # e.g., "1.2x"
     progress: float = 0.0
-    speed: str = ""
     eta: str = ""
     bitrate: str = ""
+    audio_codec: str = ""
     started_at: Optional[datetime] = None
+    cpu_percent: float = 0.0  # CPU usage of this specific ffmpeg process
 
 
 @dataclass
@@ -73,6 +98,7 @@ class CollectedData:
     history: list[TranscodeHistoryItem] = field(default_factory=list)
     logs: list[str] = field(default_factory=list)
     rffmpeg_hosts: list[dict] = field(default_factory=list)
+    node_stats: list[NodeStats] = field(default_factory=list)  # Per-node CPU/Memory stats
     last_updated: Optional[datetime] = None
 
 
@@ -99,11 +125,13 @@ class DataCollector:
             # Check local paths exist (instead of NFS mounts)
             await self.check_local_paths()
 
-            # Get rffmpeg data and active transcodes
+            # Phase 1: Get rffmpeg status first (we need host list for stats)
+            await self.get_rffmpeg_status()
+
+            # Phase 2: Get node stats, active transcodes, and logs in parallel
             await asyncio.gather(
-                self.get_rffmpeg_status(),
+                self.get_all_node_stats(),
                 self.get_rffmpeg_logs(),
-                self.get_active_transcodes(),
                 return_exceptions=True
             )
         else:
@@ -472,6 +500,290 @@ class DataCollector:
 
         self._data.history = history[-20:]
         return history
+
+    async def get_all_node_stats(self) -> list[NodeStats]:
+        """Get stats for all registered rffmpeg nodes.
+
+        SSH to each Mac node and collect CPU, memory, network stats.
+        Also gets active ffmpeg processes with details.
+        """
+        if not self._data.rffmpeg_hosts:
+            return []
+
+        # Get mac_user from config (for SSH to Mac nodes)
+        mac_user = self._get_mac_user()
+
+        # Collect stats for all nodes in parallel
+        tasks = []
+        for host in self._data.rffmpeg_hosts:
+            ip = host.get("hostname", "")
+            if ip:
+                tasks.append(self._get_single_node_stats(
+                    ip=ip,
+                    mac_user=mac_user,
+                    state=host.get("state", "unknown"),
+                    weight=int(host.get("weight", 1))
+                ))
+
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            node_stats = [r for r in results if isinstance(r, NodeStats)]
+            self._data.node_stats = node_stats
+            return node_stats
+
+        return []
+
+    def _get_mac_user(self) -> str:
+        """Get the Mac username for SSH connections."""
+        try:
+            import json
+            from pathlib import Path
+            state_file = Path.home() / ".transcodarr" / "state.json"
+            if state_file.exists():
+                with open(state_file) as f:
+                    state = json.load(f)
+                    cfg = state.get("config", {})
+                    if cfg.get("mac_user"):
+                        return cfg["mac_user"]
+        except Exception:
+            pass
+
+        import getpass
+        return getpass.getuser()
+
+    async def _get_single_node_stats(
+        self,
+        ip: str,
+        mac_user: str,
+        state: str,
+        weight: int
+    ) -> NodeStats:
+        """Get stats for a single Mac node via SSH.
+
+        Uses asyncio.create_subprocess_exec for safe command execution.
+        """
+        node = NodeStats(
+            hostname=f"{mac_user}@{ip}",
+            ip=ip,
+            state=state,
+            weight=weight
+        )
+
+        try:
+            # Build SSH command with explicit argument list (safe from injection)
+            ssh_args = [
+                "ssh",
+                "-o", "ConnectTimeout=3",
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "UserKnownHostsFile=/dev/null",
+                "-o", "LogLevel=ERROR",
+                "-o", "BatchMode=yes",
+                f"{mac_user}@{ip}",
+                # Single remote command to get all stats
+                'echo "===CPU===" && top -l 1 -n 0 | grep "CPU usage" && '
+                'echo "===MEM===" && vm_stat | head -10 && sysctl hw.memsize && '
+                'echo "===FFMPEG===" && ps aux | grep -E "[f]fmpeg" | head -10'
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *ssh_args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=5
+            )
+
+            if proc.returncode == 0:
+                node.is_online = True
+                self._parse_mac_stats(stdout.decode(), node)
+            else:
+                node.is_online = False
+                node.error = stderr.decode().strip()[:50] or "SSH failed"
+
+        except asyncio.TimeoutError:
+            node.is_online = False
+            node.error = "Timeout"
+        except Exception as e:
+            node.is_online = False
+            node.error = str(e)[:50]
+
+        return node
+
+    def _parse_mac_stats(self, output: str, node: NodeStats) -> None:
+        """Parse Mac stats output and update NodeStats object."""
+        sections = output.split("===")
+
+        for i, section in enumerate(sections):
+            section = section.strip()
+
+            if section.startswith("CPU"):
+                # Parse: CPU usage: 12.34% user, 5.67% sys, 81.99% idle
+                content = sections[i + 1] if i + 1 < len(sections) else ""
+                match = re.search(r"(\d+\.?\d*)% user.*?(\d+\.?\d*)% sys", content)
+                if match:
+                    user = float(match.group(1))
+                    sys_pct = float(match.group(2))
+                    node.cpu_percent = user + sys_pct
+
+            elif section.startswith("MEM"):
+                content = sections[i + 1] if i + 1 < len(sections) else ""
+                self._parse_memory_stats(content, node)
+
+            elif section.startswith("FFMPEG"):
+                content = sections[i + 1] if i + 1 < len(sections) else ""
+                jobs = self._parse_ffmpeg_processes(content, node.ip)
+                node.transcodes_today = self._count_transcodes_today()
+
+                for job in jobs:
+                    if job not in self._data.active_transcodes:
+                        self._data.active_transcodes.append(job)
+
+    def _parse_memory_stats(self, content: str, node: NodeStats) -> None:
+        """Parse vm_stat and sysctl output for memory stats."""
+        page_size = 16384  # Default for Apple Silicon
+
+        # Get total memory from hw.memsize
+        memsize_match = re.search(r"hw\.memsize:\s*(\d+)", content)
+        if memsize_match:
+            node.memory_total_gb = int(memsize_match.group(1)) / (1024**3)
+
+        # Calculate used memory from vm_stat
+        pages_active = 0
+        pages_wired = 0
+        pages_compressed = 0
+
+        for line in content.split("\n"):
+            if "Pages active:" in line:
+                m = re.search(r"(\d+)", line)
+                if m:
+                    pages_active = int(m.group(1))
+            elif "Pages wired down:" in line:
+                m = re.search(r"(\d+)", line)
+                if m:
+                    pages_wired = int(m.group(1))
+            elif "Pages occupied by compressor:" in line:
+                m = re.search(r"(\d+)", line)
+                if m:
+                    pages_compressed = int(m.group(1))
+
+        used_pages = pages_active + pages_wired + pages_compressed
+        node.memory_used_gb = (used_pages * page_size) / (1024**3)
+
+        if node.memory_total_gb > 0:
+            node.memory_percent = (node.memory_used_gb / node.memory_total_gb) * 100
+
+    def _parse_ffmpeg_processes(self, ps_output: str, node_ip: str) -> list[TranscodeJob]:
+        """Parse ps aux output for ffmpeg processes."""
+        jobs = []
+
+        for line in ps_output.strip().split("\n"):
+            if not line or "grep" in line:
+                continue
+
+            # ps aux format: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
+            parts = line.split(None, 10)
+            if len(parts) < 11:
+                continue
+
+            try:
+                pid = int(parts[1])
+                cpu_percent = float(parts[2])
+                command = parts[10]
+            except (ValueError, IndexError):
+                continue
+
+            job = self._parse_ffmpeg_command(command, node_ip, pid, cpu_percent)
+            if job:
+                jobs.append(job)
+
+        return jobs
+
+    def _parse_ffmpeg_command(
+        self,
+        command: str,
+        node_ip: str,
+        pid: int,
+        cpu_percent: float
+    ) -> Optional[TranscodeJob]:
+        """Parse an ffmpeg command line into a TranscodeJob."""
+
+        # Extract input file
+        input_match = re.search(r'-i\s+(?:file:)?(.+?\.(?:mkv|mp4|avi|mov|m4v))', command, re.I)
+        if input_match:
+            filename = input_match.group(1).split("/")[-1]
+        else:
+            filename = "Unknown"
+
+        # Extract video codec
+        output_codec = ""
+        if "h264_videotoolbox" in command:
+            output_codec = "H.264 (HW)"
+        elif "hevc_videotoolbox" in command:
+            output_codec = "HEVC (HW)"
+        elif "libx264" in command:
+            output_codec = "H.264 (CPU)"
+        elif "libx265" in command:
+            output_codec = "HEVC (CPU)"
+        elif "-c:v copy" in command:
+            output_codec = "Copy"
+
+        # Extract audio codec
+        audio_codec = ""
+        if "aac_at" in command:
+            audio_codec = "AAC"
+        elif "-c:a copy" in command:
+            audio_codec = "Copy"
+
+        # Extract output resolution from scale filter
+        output_resolution = ""
+        scale_match = re.search(r'scale=(\d+):(\d+)', command)
+        if scale_match:
+            output_resolution = f"{scale_match.group(1)}x{scale_match.group(2)}"
+
+        # Estimate input resolution from maxrate
+        input_resolution = ""
+        maxrate_match = re.search(r'-maxrate\s+(\d+)', command)
+        if maxrate_match:
+            maxrate = int(maxrate_match.group(1))
+            if maxrate > 15000000:
+                input_resolution = "4K"
+            elif maxrate > 8000000:
+                input_resolution = "1080p"
+            elif maxrate > 4000000:
+                input_resolution = "720p"
+            else:
+                input_resolution = "SD"
+
+        # Extract bitrate
+        bitrate = ""
+        if maxrate_match:
+            bitrate = f"{int(maxrate_match.group(1)) // 1000}k"
+
+        return TranscodeJob(
+            filename=filename[:60],
+            node_ip=node_ip,
+            pid=pid,
+            output_codec=output_codec,
+            audio_codec=audio_codec,
+            input_resolution=input_resolution,
+            output_resolution=output_resolution,
+            bitrate=bitrate,
+            cpu_percent=cpu_percent,
+        )
+
+    def _count_transcodes_today(self) -> int:
+        """Count transcodes completed today from logs."""
+        today = date.today().isoformat()
+        count = 0
+
+        for line in self._data.logs:
+            if today in line and ("Finished" in line or "completed" in line.lower()):
+                if "return code 0" in line:
+                    count += 1
+
+        return count
 
     async def check_jellyfin_api(self) -> bool:
         """Check if Jellyfin API is accessible (optional)."""

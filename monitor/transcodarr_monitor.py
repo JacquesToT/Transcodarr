@@ -6,12 +6,12 @@ A terminal-based monitoring tool for Transcodarr transcoding.
 import asyncio
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Header, Footer, Static
+from textual.containers import Container, Vertical, VerticalScroll
+from textual.widgets import Header, Footer, Static, TabbedContent, TabPane
 
 from .config import get_config, reload_config
-from .data_collector import DataCollector
-from .widgets import StatusBar, TranscodePanel, HistoryPanel, LogPanel
+from .data_collector import DataCollector, NodeStats
+from .widgets import StatusBar, LogPanel, NodeCard
 
 
 class TranscodarrMonitor(App):
@@ -28,31 +28,45 @@ class TranscodarrMonitor(App):
     #main-container {
         width: 100%;
         height: 100%;
+    }
+
+    #status-bar {
+        dock: top;
+        height: 3;
+        margin: 0 1;
+    }
+
+    TabbedContent {
+        height: 1fr;
+    }
+
+    TabPane {
         padding: 1;
     }
 
-    #top-section {
-        height: auto;
+    #nodes-container {
+        height: 100%;
+        overflow-y: auto;
     }
 
-    #middle-section {
-        height: 1fr;
+    #logs-container {
+        height: 100%;
     }
 
-    #bottom-section {
-        height: 1fr;
-        min-height: 10;
+    #config-container {
+        height: 100%;
+        padding: 1;
     }
 
-    StatusBar {
-        margin: 0 0 1 0;
+    .detail-toggle {
+        dock: top;
+        height: 1;
+        text-align: right;
+        padding-right: 2;
+        color: $text-muted;
     }
 
-    TranscodePanel {
-        margin: 0 0 1 0;
-    }
-
-    HistoryPanel {
+    NodeCard {
         margin: 0 0 1 0;
     }
 
@@ -60,29 +74,21 @@ class TranscodarrMonitor(App):
         height: 100%;
     }
 
-    #hosts-panel {
-        height: auto;
-        background: $surface;
-        border: solid $primary;
-        padding: 0 1;
-        margin: 0 0 1 0;
-    }
-
-    #hosts-title {
-        text-style: bold;
-        color: $primary;
-    }
-
-    .hidden {
-        display: none;
+    .no-nodes {
+        text-align: center;
+        padding: 2;
+        color: $text-muted;
     }
     """
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),
-        Binding("l", "toggle_logs", "Toggle Logs"),
+        Binding("d", "toggle_details", "Toggle Details"),
         Binding("c", "reload_config", "Reload Config"),
+        Binding("1", "switch_tab('dashboard')", "Dashboard", show=False),
+        Binding("2", "switch_tab('logs')", "Logs", show=False),
+        Binding("3", "switch_tab('config')", "Config", show=False),
     ]
 
     def __init__(self):
@@ -90,24 +96,35 @@ class TranscodarrMonitor(App):
         self.config = get_config()
         self.collector = DataCollector(self.config)
         self._refresh_task = None
-        self._show_logs = True
+        self._compact_mode = False  # False = detailed, True = compact
+        self._node_cards: dict[str, NodeCard] = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Container(id="main-container"):
-            with Vertical(id="top-section"):
-                yield StatusBar(id="status-bar")
-                yield Static(id="hosts-panel")
-            with Vertical(id="middle-section"):
-                yield TranscodePanel(id="transcode-panel")
-                yield HistoryPanel(id="history-panel")
-            with Vertical(id="bottom-section"):
-                yield LogPanel(id="log-panel")
+            yield StatusBar(id="status-bar")
+            with TabbedContent(id="tabs"):
+                with TabPane("Dashboard", id="dashboard"):
+                    yield Static("[D] Toggle Details", classes="detail-toggle")
+                    yield VerticalScroll(id="nodes-container")
+                with TabPane("Logs", id="logs"):
+                    yield Vertical(id="logs-container")
+                with TabPane("Config", id="config"):
+                    yield Vertical(id="config-container")
         yield Footer()
 
     async def on_mount(self) -> None:
         """Start the refresh loop when the app mounts."""
-        self._update_hosts_panel([])
+        # Initialize logs panel
+        logs_container = self.query_one("#logs-container", Vertical)
+        logs_container.mount(LogPanel(id="log-panel"))
+
+        # Initialize config panel
+        config_container = self.query_one("#config-container", Vertical)
+        config_content = self._render_config()
+        config_container.mount(Static(config_content, id="config-content"))
+
+        # Initial refresh
         await self._do_refresh()
         self._refresh_task = asyncio.create_task(self._refresh_loop())
 
@@ -131,40 +148,113 @@ class TranscodarrMonitor(App):
         try:
             data = await self.collector.collect_all()
 
-            # Update all widgets
+            # Update status bar
             status_bar = self.query_one("#status-bar", StatusBar)
             status_bar.update_status(data.status)
 
-            transcode_panel = self.query_one("#transcode-panel", TranscodePanel)
-            transcode_panel.update_jobs(data.active_transcodes)
+            # Update node cards
+            await self._update_node_cards(data.node_stats, data.active_transcodes)
 
-            history_panel = self.query_one("#history-panel", HistoryPanel)
-            history_panel.update_history(data.history)
-
+            # Update logs
             log_panel = self.query_one("#log-panel", LogPanel)
             log_panel.update_logs(data.logs)
-
-            self._update_hosts_panel(data.rffmpeg_hosts)
 
         except Exception as e:
             self.notify(f"Refresh error: {e}", severity="error")
 
-    def _update_hosts_panel(self, hosts: list[dict]) -> None:
-        """Update the hosts panel with rffmpeg host info."""
-        panel = self.query_one("#hosts-panel", Static)
+    async def _update_node_cards(
+        self,
+        nodes: list[NodeStats],
+        all_jobs: list
+    ) -> None:
+        """Update the node cards display."""
+        container = self.query_one("#nodes-container", VerticalScroll)
 
-        if not hosts:
-            panel.update("[bold magenta]rffmpeg Hosts[/bold magenta]\n[dim]No hosts registered[/dim]")
+        if not nodes:
+            # Show placeholder if no nodes
+            if not container.children or not isinstance(
+                container.children[0], Static
+            ):
+                container.remove_children()
+                container.mount(Static(
+                    "[dim]No transcode nodes registered.\n\n"
+                    "Add nodes with: rffmpeg add <mac-ip>[/dim]",
+                    classes="no-nodes"
+                ))
             return
 
-        content = "[bold magenta]rffmpeg Hosts[/bold magenta]\n"
-        for host in hosts:
-            state_color = "green" if host.get("state") == "idle" else "yellow"
-            active = host.get("active", "0")
-            content += f"  [{state_color}]\u25cf[/{state_color}] {host.get('hostname', 'Unknown')}"
-            content += f" (weight: {host.get('weight', '?')}, active: {active})\n"
+        # Remove placeholder if it exists
+        for child in list(container.children):
+            if isinstance(child, Static) and "no-nodes" in child.classes:
+                child.remove()
 
-        panel.update(content.strip())
+        # Group jobs by node IP
+        jobs_by_node: dict[str, list] = {}
+        for job in all_jobs:
+            node_ip = job.node_ip or "unknown"
+            if node_ip not in jobs_by_node:
+                jobs_by_node[node_ip] = []
+            jobs_by_node[node_ip].append(job)
+
+        # Update or create node cards
+        current_ips = {node.ip for node in nodes}
+
+        # Remove cards for nodes that no longer exist
+        for ip in list(self._node_cards.keys()):
+            if ip not in current_ips:
+                card = self._node_cards.pop(ip)
+                card.remove()
+
+        # Update or create cards for each node
+        for node in nodes:
+            node_jobs = jobs_by_node.get(node.ip, [])
+
+            if node.ip in self._node_cards:
+                # Update existing card
+                self._node_cards[node.ip].update_node(
+                    node, node_jobs, self._compact_mode
+                )
+            else:
+                # Create new card
+                card = NodeCard(
+                    node=node,
+                    jobs=node_jobs,
+                    compact=self._compact_mode,
+                    id=f"node-{node.ip.replace('.', '-')}"
+                )
+                self._node_cards[node.ip] = card
+                container.mount(card)
+
+    def _render_config(self) -> str:
+        """Render the config panel content."""
+        cfg = self.config
+
+        content = "[bold cyan]Transcodarr Configuration[/bold cyan]\n\n"
+
+        content += "[bold]Mode:[/bold]\n"
+        if cfg.is_synology:
+            content += "  Running on Synology (local mode)\n\n"
+        else:
+            content += "  Running on Mac (SSH to NAS mode)\n\n"
+
+        content += "[bold]NAS Connection:[/bold]\n"
+        content += f"  IP: {cfg.nas_ip}\n"
+        content += f"  User: {cfg.nas_user}\n"
+        content += f"  SSH Timeout: {cfg.ssh_timeout}s\n\n"
+
+        content += "[bold]Paths:[/bold]\n"
+        content += f"  Media: {cfg.media_path}\n"
+        content += f"  Cache: {cfg.cache_path}\n\n"
+
+        content += "[bold]Monitor Settings:[/bold]\n"
+        content += f"  Refresh Interval: {cfg.refresh_interval}s\n"
+        content += f"  Log Lines: {cfg.log_lines}\n\n"
+
+        content += "[bold]Jellyfin:[/bold]\n"
+        content += f"  URL: {cfg.jellyfin_url}\n"
+        content += f"  API Key: {'Configured' if cfg.jellyfin_api_key else 'Not set'}\n"
+
+        return content
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -176,20 +266,43 @@ class TranscodarrMonitor(App):
         await self._do_refresh()
         self.notify("Refreshed!", severity="information")
 
-    def action_toggle_logs(self) -> None:
-        """Toggle log panel visibility."""
-        log_panel = self.query_one("#log-panel", LogPanel)
-        self._show_logs = not self._show_logs
+    def action_toggle_details(self) -> None:
+        """Toggle between compact and detailed view."""
+        self._compact_mode = not self._compact_mode
+        mode_name = "Compact" if self._compact_mode else "Detailed"
+        self.notify(f"View: {mode_name}", severity="information")
 
-        if self._show_logs:
-            log_panel.remove_class("hidden")
-        else:
-            log_panel.add_class("hidden")
+        # Update the toggle indicator
+        try:
+            toggle = self.query_one(".detail-toggle", Static)
+            toggle.update(
+                f"[D] {'Compact' if self._compact_mode else 'Detailed'} View"
+            )
+        except Exception:
+            pass
+
+        # Update all node cards
+        for card in self._node_cards.values():
+            card.compact = self._compact_mode
+            card._update_display()
+
+    def action_switch_tab(self, tab_id: str) -> None:
+        """Switch to specified tab."""
+        tabs = self.query_one("#tabs", TabbedContent)
+        tabs.active = tab_id
 
     def action_reload_config(self) -> None:
         """Reload configuration from disk."""
         self.config = reload_config()
         self.collector = DataCollector(self.config)
+
+        # Update config panel
+        try:
+            config_content = self.query_one("#config-content", Static)
+            config_content.update(self._render_config())
+        except Exception:
+            pass
+
         self.notify("Configuration reloaded", severity="information")
 
 
