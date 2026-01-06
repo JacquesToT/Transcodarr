@@ -236,6 +236,32 @@ wizard_synology() {
         echo ""
         show_nfs_instructions
         wait_for_user "Have you configured NFS permissions for these folders?"
+
+        # Re-check after user confirms
+        echo ""
+        show_info "Re-checking NFS exports..."
+        local recheck_ok=true
+        if ! check_nfs_export "$media_path"; then
+            recheck_ok=false
+            show_warning "Still no NFS export for: $media_path"
+        else
+            show_result true "NFS export found for media path"
+        fi
+        if ! check_nfs_export "$cache_path"; then
+            recheck_ok=false
+            show_warning "Still no NFS export for: $cache_path"
+        else
+            show_result true "NFS export found for cache path"
+        fi
+
+        if [[ "$recheck_ok" == false ]]; then
+            echo ""
+            show_warning "NFS exports still not detected. The installer will continue, but NFS mounts may fail."
+            echo ""
+            if ! ask_confirm "Continue anyway?"; then
+                return 1
+            fi
+        fi
     else
         show_result true "NFS exports found for media and cache paths"
     fi
