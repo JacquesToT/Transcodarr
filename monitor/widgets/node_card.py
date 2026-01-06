@@ -117,9 +117,10 @@ class NodeCard(Static):
             cpu_bar = self._make_gauge(self.node.cpu_percent, 20)
             mem_bar = self._make_gauge(self.node.memory_percent, 10)
 
+            # Use escaped brackets \\[ and \\] for literal display in Rich
             stats_text = (
-                f"CPU [{cpu_bar}] {self.node.cpu_percent:5.1f}%    "
-                f"MEM [{mem_bar}] {self.node.memory_used_gb:.1f}/{self.node.memory_total_gb:.0f}GB    "
+                f"CPU \\[{cpu_bar}\\] {self.node.cpu_percent:5.1f}%    "
+                f"MEM \\[{mem_bar}\\] {self.node.memory_used_gb:.1f}/{self.node.memory_total_gb:.0f}GB    "
                 f"Today: {self.node.transcodes_today} transcodes"
             )
         else:
