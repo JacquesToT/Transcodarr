@@ -2,7 +2,7 @@
 
 from textual.app import ComposeResult
 from textual.widgets import Static
-from textual.containers import Vertical, Container
+from textual.containers import Container
 
 from ..data_collector import NodeStats, TranscodeJob
 
@@ -71,7 +71,7 @@ class NodeCard(Container):
     def compose(self) -> ComposeResult:
         yield Static(id="node-header")
         yield Static(id="node-stats")
-        yield Vertical(id="node-jobs")
+        yield Static(id="node-jobs")
 
     async def on_mount(self) -> None:
         """Update content when mounted."""
@@ -119,25 +119,21 @@ class NodeCard(Container):
             stats_text = (
                 f"CPU \\[{cpu_bar}\\] {self.node.cpu_percent:5.1f}%    "
                 f"MEM \\[{mem_bar}\\] {self.node.memory_used_gb:.1f}/{self.node.memory_total_gb:.0f}GB    "
-                f"Today: {self.node.transcodes_today} transcodes"
+                f"Transcoding: {len(self.jobs)}"
             )
         else:
             stats_text = "[dim]No stats available[/dim]"
         stats.update(stats_text)
 
-        # Jobs - must await these operations
-        jobs_container = self.query_one("#node-jobs", Vertical)
-        await jobs_container.remove_children()
-
+        # Jobs - render all as single text block (avoids mount/remove issues)
+        jobs_widget = self.query_one("#node-jobs", Static)
         if not self.jobs:
-            await jobs_container.mount(Static(
-                "[dim italic]No active transcodes[/dim italic]",
-                classes="job-line"
-            ))
+            jobs_widget.update("[dim italic]No active transcodes[/dim italic]")
         else:
+            job_lines = []
             for job in self.jobs:
-                job_widget = self._create_job_widget(job)
-                await jobs_container.mount(job_widget)
+                job_lines.append(self._format_job(job))
+            jobs_widget.update("\n".join(job_lines))
 
     def _make_gauge(self, percent: float, width: int) -> str:
         """Create a text-based gauge bar."""
@@ -158,47 +154,35 @@ class NodeCard(Container):
 
         return f"[{color}]{filled_char * filled}[/{color}]{empty_char * empty}"
 
-    def _create_job_widget(self, job: TranscodeJob) -> Static:
-        """Create a widget for a single transcode job."""
+    def _format_job(self, job: TranscodeJob) -> str:
+        """Format a single transcode job as text."""
         # Truncate filename
         filename = job.filename
-        if len(filename) > 45:
-            filename = filename[:42] + "..."
+        if len(filename) > 50:
+            filename = filename[:47] + "..."
 
         if self.compact:
             # Compact mode: single line
-            content = (
-                f"[cyan]●[/cyan] {filename} - "
-                f"{job.output_codec or 'Encoding'}"
-            )
+            line = f"[cyan]●[/cyan] {filename}"
+            if job.output_codec:
+                line += f" - {job.output_codec}"
             if job.cpu_percent > 0:
-                content += f" - CPU: {job.cpu_percent:.0f}%"
+                line += f" - CPU: {job.cpu_percent:.0f}%"
+            return line
         else:
             # Detailed mode: filename + details
             details = []
 
-            if job.input_resolution and job.output_resolution:
-                details.append(f"{job.input_resolution} → {job.output_resolution}")
-            elif job.input_resolution:
-                details.append(job.input_resolution)
-
             if job.output_codec:
                 details.append(job.output_codec)
-
-            if job.audio_codec:
-                details.append(f"Audio: {job.audio_codec}")
-
-            if job.bitrate:
-                details.append(job.bitrate)
 
             if job.cpu_percent > 0:
                 details.append(f"CPU: {job.cpu_percent:.0f}%")
 
-            content = f"[cyan]●[/cyan] [bold]{filename}[/bold]\n"
+            line = f"[cyan]●[/cyan] {filename}"
             if details:
-                content += f"    [dim]{' | '.join(details)}[/dim]"
-
-        return Static(content, classes="job-line")
+                line += f" [dim]({' | '.join(details)})[/dim]"
+            return line
 
     async def update_node(
         self,
