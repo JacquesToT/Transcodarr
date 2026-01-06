@@ -364,3 +364,107 @@ Hostname        State   Active Commands
 2. **/config/cache symlink:** ❌ TE FIXEN
    - Probleem: `ln -sf` in bestaande directory maakt sublink
    - Fix: Eerst `rm -rf /config/cache` voordat symlink wordt gemaakt
+
+---
+---
+
+# Issue 3: Monitor UI Toont Geen Nodes - 2026-01-06
+
+## Status: 🔍 ONDERZOEK
+
+## Probleem
+De verbeterde monitor toont geen node cards, ondanks dat:
+- Status bar werkt (LOCAL, Docker, Media, Cache alle groen)
+- Tabs werken (Dashboard, Logs, Config)
+- `rffmpeg status` toont wel de Mac node met actieve transcodes
+
+## Nieuwe Monitor Features (geïmplementeerd)
+1. Per-node cards met CPU/Memory gauges
+2. Tabbed interface (Dashboard/Logs/Config)
+3. Detail toggle (D key) compact/detailed view
+4. SSH via container naar Mac voor stats
+
+---
+
+## Debug Sessie
+
+### Poging 1: Basis implementatie
+**Probleem:** Dashboard bleef leeg
+**Oorzaak:** Monitor draaide op Synology host, maar SSH keys alleen in container
+**Fix:** SSH commands via `docker exec jellyfin ssh ...` uitvoeren
+
+### Poging 2: SSH via container
+**Test:**
+```bash
+sudo docker exec jellyfin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -i /config/rffmpeg/.ssh/id_rsa nick@192.168.175.43 "echo OK"
+```
+**Resultaat:** Host key verification failed
+**Fix:** Added StrictHostKeyChecking=no (was al in code, werkte daarna)
+
+### Poging 3: Parsing error
+**Error:** `invalid literal for int with base 10: '-analyzeduration'`
+**Oorzaak:** rffmpeg status output heeft multi-line Active Commands
+```
+192.168.175.43  192.168.175.43  1   4       active  PID 4384: ffmpeg -h
+                                                    PID 918: ffmpeg -analyzeduration...
+```
+De continuation lines werden als nieuwe hosts geparsed.
+**Fix:** Skip lines die met whitespace beginnen, valideer ID/weight als integers
+
+### Poging 4: zsh marker interpretatie
+**Error:** `zsh:1: ==CPU=== not found`
+**Oorzaak:** Markers `===CPU===` werden door zsh als comparison operators gezien
+**Fix:** Markers veranderd naar `STATS_CPU_START` etc.
+
+### Poging 5: Rich markup error
+**Error:** `MarkupError: Expected markup value (found '== not found][/red]').`
+**Oorzaak:** Error messages bevatten `[` en `]` die als Rich tags worden geïnterpreteerd
+**Fix:** Escape `[` naar `\\[` in error messages
+
+### Poging 6: SSH return code
+**Debug log toonde:**
+```
+SSH returncode: 1
+SSH stdout: STATS_CPU_START
+CPU usage: 1.58% user, 11.11% sys, 87.30% idle
+STATS_MEM_START
+...
+```
+**Oorzaak:** `grep ffmpeg | grep -v grep` geeft exit 1 als geen ffmpeg processen draaien
+**Fix:** Check alleen op `STATS_CPU_START` marker in output, negeer return code
+
+### Poging 7: Gauge brackets
+**Error:** `MarkupError: closing tag '[/green]' does not match any open tag`
+**Oorzaak:** `CPU [{gauge}]` - de `[` rond de gauge conflicteert met Rich markup
+**Fix:** Escape brackets: `CPU \\[{gauge}\\]`
+
+### Poging 8: NOG STEEDS LEEG
+**Status:** Data wordt correct opgehaald (zie debug log), maar UI toont niets
+
+**Debug log bevestigt:**
+```
+parsed hosts: [{'hostname': '192.168.175.43', ...}]
+filtered node_stats: [NodeStats(hostname='nick@192.168.175.43', ip='192.168.175.43',
+                      cpu_percent=21.7, memory_percent=43.2, is_online=True, ...)]
+```
+
+---
+
+## Huidige Status
+
+**Wat werkt:**
+- ✅ rffmpeg status wordt correct geparsed
+- ✅ SSH naar Mac werkt (via container)
+- ✅ CPU/Memory stats worden opgehaald
+- ✅ NodeStats objects worden correct aangemaakt
+- ✅ Status bar werkt
+
+**Wat niet werkt:**
+- ❌ NodeCard widgets worden niet gerenderd in de UI
+
+## Volgende Debug Stappen
+
+1. Check of `_update_node_cards()` wordt aangeroepen
+2. Check of NodeCard widgets daadwerkelijk worden gemount
+3. Check of er een exception wordt gegooid tijdens render
+4. Voeg debug logging toe aan `_update_node_cards()` in transcodarr_monitor.py
