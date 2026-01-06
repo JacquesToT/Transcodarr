@@ -510,6 +510,8 @@ finalize_rffmpeg_setup() {
         # 2. Copy keys to rffmpeg default location (/var/lib/jellyfin/.ssh/)
         # rffmpeg looks here by default even when custom path is configured
         mkdir -p /var/lib/jellyfin/.ssh
+        # Fix parent dir permissions so abc user can access .ssh
+        chmod 755 /var/lib/jellyfin
         if [ -f /config/rffmpeg/.ssh/id_rsa ]; then
             cp /config/rffmpeg/.ssh/id_rsa /var/lib/jellyfin/.ssh/id_rsa
             cp /config/rffmpeg/.ssh/id_rsa.pub /var/lib/jellyfin/.ssh/id_rsa.pub 2>/dev/null || true
