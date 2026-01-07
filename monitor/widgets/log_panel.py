@@ -50,12 +50,45 @@ class LogPanel(Static):
         yield RichLog(id="log-content", highlight=True, markup=True)
 
     def update_logs(self, logs: list[str]) -> None:
-        """Update the log display."""
+        """Update the log display with new log entries."""
         log_widget = self.query_one("#log-content", RichLog)
 
-        # Only add new logs
-        new_logs = logs[len(self._logs):]
-        self._logs = logs
+        if not logs:
+            # No logs available - show message if we haven't already
+            if not self._logs:
+                log_widget.write("[dim]No rffmpeg logs found. Logs appear after transcoding activity.[/dim]")
+                self._logs = ["__no_logs__"]
+            return
+
+        # Check if logs have changed
+        if logs == self._logs:
+            return  # No changes
+
+        # Determine what's new
+        if not self._logs or self._logs == ["__no_logs__"]:
+            # First real logs - show all
+            log_widget.clear()
+            new_logs = logs
+        elif len(logs) >= len(self._logs):
+            # Logs grew or same size - check for new entries at end
+            # Compare last known log to find where new ones start
+            try:
+                last_known = self._logs[-1]
+                if last_known in logs:
+                    idx = logs.index(last_known)
+                    new_logs = logs[idx + 1:]
+                else:
+                    # Last known log not found - log probably rotated
+                    log_widget.clear()
+                    new_logs = logs
+            except (ValueError, IndexError):
+                new_logs = logs[len(self._logs):]
+        else:
+            # Logs shrunk (rotation) - refresh all
+            log_widget.clear()
+            new_logs = logs
+
+        self._logs = logs.copy()
 
         for line in new_logs:
             styled_line = self._style_log_line(line)

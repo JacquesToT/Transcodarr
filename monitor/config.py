@@ -114,7 +114,10 @@ class TranscodarrConfig:
                     config.media_path = cfg["media_path"]
                 if "cache_path" in cfg:
                     config.cache_path = cfg["cache_path"]
-                if "jellyfin_container_name" in cfg:
+                # Check both possible key names for container
+                if "jellyfin_container" in cfg:
+                    config.jellyfin_container_name = cfg["jellyfin_container"]
+                elif "jellyfin_container_name" in cfg:
                     config.jellyfin_container_name = cfg["jellyfin_container_name"]
                 if "jellyfin_port" in cfg:
                     config.jellyfin_port = cfg["jellyfin_port"]
