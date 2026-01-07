@@ -58,11 +58,11 @@ ensure_container_ssh_key() {
 
     # Get the actual abc user uid from the container
     local abc_uid abc_gid
-    abc_uid=$(sudo docker exec jellyfin id -u abc 2>/dev/null || echo "1000")
-    abc_gid=$(sudo docker exec jellyfin id -g abc 2>/dev/null || echo "1000")
+    abc_uid=$(sudo docker exec "$JELLYFIN_CONTAINER" id -u abc 2>/dev/null || echo "1000")
+    abc_gid=$(sudo docker exec "$JELLYFIN_CONTAINER" id -g abc 2>/dev/null || echo "1000")
 
     # Check if key exists in container
-    if sudo docker exec jellyfin test -f "$container_key_path" 2>/dev/null; then
+    if sudo docker exec "$JELLYFIN_CONTAINER" test -f "$container_key_path" 2>/dev/null; then
         # Key exists - verify abc user can read it
         if sudo docker exec -u abc jellyfin test -r "$container_key_path" 2>/dev/null; then
             show_skip "SSH key already exists with correct permissions"
@@ -105,7 +105,7 @@ ensure_container_ssh_key() {
     sudo chmod 644 "${host_key_file}.pub"
 
     # Step 3: Verify key is now visible in container
-    if sudo docker exec jellyfin test -f "$container_key_path" 2>/dev/null; then
+    if sudo docker exec "$JELLYFIN_CONTAINER" test -f "$container_key_path" 2>/dev/null; then
         show_result true "SSH key installed in Jellyfin container"
         # Run finalize to ensure persist dir and default key location
         finalize_rffmpeg_setup "$jellyfin_config"
@@ -247,9 +247,9 @@ create_docker_compose() {
 # For NEW installations
 
 services:
-  jellyfin:
+  ${JELLYFIN_CONTAINER}:
     image: linuxserver/jellyfin:latest
-    container_name: jellyfin
+    container_name: ${JELLYFIN_CONTAINER}
     environment:
       - PUID=1000
       - PGID=1000
@@ -317,8 +317,8 @@ sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh
 sudo cp -a output/rffmpeg/. ${jellyfin_config}/rffmpeg/
 
 # Get abc user UID from container (matches your PUID setting)
-ABC_UID=\$(sudo docker exec jellyfin id -u abc)
-ABC_GID=\$(sudo docker exec jellyfin id -g abc)
+ABC_UID=\$(sudo docker exec "$JELLYFIN_CONTAINER" id -u abc)
+ABC_GID=\$(sudo docker exec "$JELLYFIN_CONTAINER" id -g abc)
 sudo chown -R \${ABC_UID}:\${ABC_GID} ${jellyfin_config}/rffmpeg
 \`\`\`
 
@@ -327,8 +327,8 @@ sudo chown -R \${ABC_UID}:\${ABC_GID} ${jellyfin_config}/rffmpeg
 ## Add Mac to rffmpeg
 
 \`\`\`bash
-docker exec jellyfin rffmpeg add ${mac_ip} --weight 2
-docker exec jellyfin rffmpeg status
+docker exec "$JELLYFIN_CONTAINER" rffmpeg add ${mac_ip} --weight 2
+docker exec "$JELLYFIN_CONTAINER" rffmpeg status
 \`\`\`
 EOF
 
@@ -395,8 +395,8 @@ copy_rffmpeg_files() {
 
     # Dynamically get abc user UID/GID from running container
     local abc_uid abc_gid
-    abc_uid=$(sudo docker exec jellyfin id -u abc 2>/dev/null || echo "1000")
-    abc_gid=$(sudo docker exec jellyfin id -g abc 2>/dev/null || echo "1000")
+    abc_uid=$(sudo docker exec "$JELLYFIN_CONTAINER" id -u abc 2>/dev/null || echo "1000")
+    abc_gid=$(sudo docker exec "$JELLYFIN_CONTAINER" id -g abc 2>/dev/null || echo "1000")
 
     echo ""
     if command -v gum &> /dev/null; then
@@ -474,8 +474,8 @@ show_manual_copy_instructions() {
 
     # Get abc uid/gid for instructions
     local abc_uid abc_gid
-    abc_uid=$(sudo docker exec jellyfin id -u abc 2>/dev/null || echo "<PUID>")
-    abc_gid=$(sudo docker exec jellyfin id -g abc 2>/dev/null || echo "<PGID>")
+    abc_uid=$(sudo docker exec "$JELLYFIN_CONTAINER" id -u abc 2>/dev/null || echo "<PUID>")
+    abc_gid=$(sudo docker exec "$JELLYFIN_CONTAINER" id -g abc 2>/dev/null || echo "<PGID>")
 
     echo ""
     show_info "Run these commands manually:"
@@ -501,12 +501,12 @@ finalize_rffmpeg_setup() {
     # Check if container is running
     if ! sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jellyfin$"; then
         show_warning "Jellyfin container not running - skipping finalize"
-        show_info "Run this after starting Jellyfin: sudo docker exec jellyfin bash -c 'mkdir -p /config/rffmpeg/persist /var/lib/jellyfin/.ssh'"
+        show_info "Run this after starting Jellyfin: sudo docker exec "$JELLYFIN_CONTAINER" bash -c 'mkdir -p /config/rffmpeg/persist /var/lib/jellyfin/.ssh'"
         return 0
     fi
 
     # Execute all setup inside container in single command for efficiency
-    if sudo docker exec jellyfin bash -c '
+    if sudo docker exec "$JELLYFIN_CONTAINER" bash -c '
         # 1. Create persist directory for SSH ControlMaster sockets
         mkdir -p /config/rffmpeg/persist
         chown abc:abc /config/rffmpeg/persist
@@ -667,8 +667,8 @@ run_add_node_setup() {
     echo ""
     show_info "Add the Mac to rffmpeg:"
     echo ""
-    echo -e "  ${GREEN}docker exec jellyfin rffmpeg add ${mac_ip} --weight 2${NC}"
+    echo -e "  ${GREEN}docker exec "$JELLYFIN_CONTAINER" rffmpeg add ${mac_ip} --weight 2${NC}"
     echo ""
-    echo -e "  ${GREEN}docker exec jellyfin rffmpeg status${NC}"
+    echo -e "  ${GREEN}docker exec "$JELLYFIN_CONTAINER" rffmpeg status${NC}"
     echo ""
 }

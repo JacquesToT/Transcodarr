@@ -4,6 +4,76 @@
 # Detects system type and installation status
 #
 
+# Global container name - set by detect_jellyfin_container()
+JELLYFIN_CONTAINER="${JELLYFIN_CONTAINER:-jellyfin}"
+
+# Detect and set the Jellyfin container name
+# Checks state.json first, then tries to auto-detect
+detect_jellyfin_container() {
+    # 1. Check if already set in state.json
+    local saved_container
+    saved_container=$(get_config "jellyfin_container" 2>/dev/null)
+    if [[ -n "$saved_container" ]]; then
+        JELLYFIN_CONTAINER="$saved_container"
+        return 0
+    fi
+
+    # 2. Auto-detect: find containers with rffmpeg installed
+    local containers=()
+    while IFS= read -r name; do
+        [[ -n "$name" ]] && containers+=("$name")
+    done < <(sudo docker ps --format '{{.Names}}' 2>/dev/null | while read -r c; do
+        if sudo docker exec "$c" which rffmpeg &>/dev/null 2>&1; then
+            echo "$c"
+        fi
+    done)
+
+    case ${#containers[@]} in
+        0)
+            # No container found with rffmpeg - look for jellyfin-like names
+            local jellyfin_containers=()
+            while IFS= read -r name; do
+                [[ -n "$name" ]] && jellyfin_containers+=("$name")
+            done < <(sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -i jellyfin)
+
+            if [[ ${#jellyfin_containers[@]} -eq 1 ]]; then
+                JELLYFIN_CONTAINER="${jellyfin_containers[0]}"
+            elif [[ ${#jellyfin_containers[@]} -gt 1 ]]; then
+                # Multiple - ask user
+                echo "Multiple Jellyfin containers found:"
+                for i in "${!jellyfin_containers[@]}"; do
+                    echo "  $((i+1)). ${jellyfin_containers[$i]}"
+                done
+                read -rp "Select container (1-${#jellyfin_containers[@]}): " choice
+                JELLYFIN_CONTAINER="${jellyfin_containers[$((choice-1))]}"
+            fi
+            # else: keep default "jellyfin"
+            ;;
+        1)
+            JELLYFIN_CONTAINER="${containers[0]}"
+            ;;
+        *)
+            # Multiple containers with rffmpeg - ask user
+            echo "Multiple containers with rffmpeg found:"
+            for i in "${!containers[@]}"; do
+                echo "  $((i+1)). ${containers[$i]}"
+            done
+            read -rp "Select container (1-${#containers[@]}): " choice
+            JELLYFIN_CONTAINER="${containers[$((choice-1))]}"
+            ;;
+    esac
+
+    # Save for future use
+    if [[ -n "$JELLYFIN_CONTAINER" ]]; then
+        set_config "jellyfin_container" "$JELLYFIN_CONTAINER" 2>/dev/null || true
+    fi
+}
+
+# Get the Jellyfin container name (for use in scripts)
+get_jellyfin_container() {
+    echo "$JELLYFIN_CONTAINER"
+}
+
 # Detect if running on Synology NAS
 is_synology() {
     [[ -f /etc/synoinfo.conf ]] || [[ -d /volume1 ]] || [[ -d /volume2 ]]

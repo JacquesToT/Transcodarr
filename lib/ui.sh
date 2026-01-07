@@ -301,7 +301,7 @@ show_docker_mods_instructions() {
     echo ""
     echo -e "  ${YELLOW}After container restart (wait ~30 seconds):${NC}"
     echo ""
-    echo -e "  ${GREEN}docker exec jellyfin rffmpeg add $mac_ip --weight 2${NC}"
+    echo -e "  ${GREEN}docker exec $JELLYFIN_CONTAINER rffmpeg add $mac_ip --weight 2${NC}"
     echo ""
 }
 
@@ -616,7 +616,7 @@ show_mac_summary() {
     echo "    2. Restart Jellyfin container"
     echo "    3. Run:"
     echo ""
-    echo -e "       ${GREEN}docker exec jellyfin rffmpeg status${NC}"
+    echo -e "       ${GREEN}docker exec $JELLYFIN_CONTAINER rffmpeg status${NC}"
     echo ""
     echo "  You should see your Mac in the list!"
     echo ""

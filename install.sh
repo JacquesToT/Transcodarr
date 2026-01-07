@@ -456,19 +456,19 @@ wizard_synology() {
         echo ""
 
         # Check if Mac is already registered
-        if sudo docker exec jellyfin rffmpeg status 2>/dev/null | grep -q "$mac_ip"; then
+        if sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null | grep -q "$mac_ip"; then
             show_skip "Mac is already registered in rffmpeg"
             echo ""
             show_info "Current rffmpeg status:"
-            sudo docker exec jellyfin rffmpeg status 2>/dev/null || true
+            sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null || true
         else
             show_info "Adding Mac to rffmpeg..."
-            if sudo docker exec jellyfin rffmpeg add "$mac_ip" --weight "$weight" 2>&1 | grep -v "DeprecationWarning"; then
+            if sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg add "$mac_ip" --weight "$weight" 2>&1 | grep -v "DeprecationWarning"; then
                 echo ""
                 show_result true "Mac added to rffmpeg!"
                 echo ""
                 show_info "Current rffmpeg status:"
-                sudo docker exec jellyfin rffmpeg status 2>/dev/null || true
+                sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null || true
             else
                 echo ""
                 show_error "Could not add Mac to rffmpeg"
@@ -478,15 +478,15 @@ wizard_synology() {
                 echo "  - rffmpeg is still initializing"
                 echo ""
                 show_info "Try manually after container restart:"
-                echo -e "  ${GREEN}sudo docker exec jellyfin rffmpeg add $mac_ip --weight $weight${NC}"
+                echo -e "  ${GREEN}sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg add $mac_ip --weight $weight${NC}"
             fi
         fi
     else
         echo ""
         show_info "After restarting Jellyfin, run:"
         echo ""
-        echo -e "  ${GREEN}sudo docker exec jellyfin rffmpeg add $mac_ip --weight 2${NC}"
-        echo -e "  ${GREEN}sudo docker exec jellyfin rffmpeg status${NC}"
+        echo -e "  ${GREEN}sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg add $mac_ip --weight 2${NC}"
+        echo -e "  ${GREEN}sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status${NC}"
     fi
 
     echo ""
@@ -724,7 +724,7 @@ start_monitor() {
 # Get list of registered nodes from rffmpeg
 get_registered_nodes() {
     local status
-    status=$(sudo docker exec jellyfin rffmpeg status 2>/dev/null || echo "")
+    status=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null || echo "")
     if [[ -z "$status" ]]; then
         return 1
     fi
@@ -813,14 +813,14 @@ menu_change_weight() {
     echo ""
 
     # Remove and re-add with new weight
-    if sudo docker exec jellyfin rffmpeg remove "$selected_node" 2>/dev/null; then
-        if sudo docker exec jellyfin rffmpeg add "$selected_node" --weight "$new_weight" 2>/dev/null; then
+    if sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg remove "$selected_node" 2>/dev/null; then
+        if sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg add "$selected_node" --weight "$new_weight" 2>/dev/null; then
             show_result true "Weight updated to $new_weight for $selected_node"
             echo ""
-            sudo docker exec jellyfin rffmpeg status 2>/dev/null || true
+            sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null || true
         else
             show_error "Failed to re-add node"
-            show_info "Try manually: sudo docker exec jellyfin rffmpeg add $selected_node --weight $new_weight"
+            show_info "Try manually: sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg add $selected_node --weight $new_weight"
         fi
     else
         show_error "Failed to remove node for update"
@@ -873,7 +873,7 @@ menu_remove_node() {
     echo ""
 
     # Remove from rffmpeg
-    if sudo docker exec jellyfin rffmpeg remove "$selected_node" 2>/dev/null; then
+    if sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg remove "$selected_node" 2>/dev/null; then
         show_result true "Node $selected_node removed from rffmpeg"
     else
         show_error "Failed to remove node from rffmpeg"
@@ -1161,6 +1161,9 @@ main() {
         show_info "Run this on your Synology, not your computer."
         exit 1
     fi
+
+    # Detect Jellyfin container name (supports custom names)
+    detect_jellyfin_container
 
     # Ensure gum is available
     check_and_install_gum
