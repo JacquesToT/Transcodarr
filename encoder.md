@@ -17,32 +17,32 @@ Transcodarr uses jellyfin-ffmpeg on Mac for HDR/Dolby Vision transcoding support
 | **Wrong GitHub repo** | Was using `jellyfin-server-macos` (DMG, no macOS builds with tonemapx) | Now uses `jellyfin/jellyfin-ffmpeg` (tar.xz with proper builds) |
 | **ffmpeg_variant not saved** | State never persisted after installation | Added `set_config "ffmpeg_variant" "jellyfin"` |
 | **Homebrew option removed** | User wanted jellyfin-only | Simplified to always install jellyfin-ffmpeg |
+| **libfdk_aac return code 8** | Jellyfin requests libfdk_aac but jellyfin-ffmpeg has `--disable-libfdk-aac` | Wrapper script replaces libfdk_aac → aac |
 
-### Current Status: Return Code 8
+### Fixed: Return Code 8 (libfdk_aac)
 
-**Symptom:** Mac is used for transcoding but fails with return code 8
+**Symptom:** Mac was used for transcoding but failed with return code 8
 
-**Root Cause:** Jellyfin requests `libfdk_aac` encoder but jellyfin-ffmpeg has `--disable-libfdk-aac`
+**Root Cause:** Jellyfin's local ffmpeg (on Synology) has `libfdk_aac` enabled, so Jellyfin generates commands with `-codec:a:0 libfdk_aac`. But jellyfin-ffmpeg on Mac is built with `--disable-libfdk-aac`.
 
 ```
--codec:a:0 libfdk_aac   ← Jellyfin requests this
+-codec:a:0 libfdk_aac   ← Jellyfin requests this (from Synology detection)
+--disable-libfdk-aac    ← Mac's jellyfin-ffmpeg doesn't have it
 ```
 
-But jellyfin-ffmpeg build shows:
+**Solution Implemented:** Wrapper script on Mac that transparently replaces `libfdk_aac` with `aac`:
+
+```bash
+# /opt/jellyfin-ffmpeg/ffmpeg (wrapper)
+#!/bin/bash
+args=()
+for arg in "$@"; do
+    args+=("${arg/libfdk_aac/aac}")
+done
+exec /opt/jellyfin-ffmpeg/ffmpeg.real "${args[@]}"
 ```
---disable-libfdk-aac    ← Not available!
-```
 
-**Available AAC encoders in jellyfin-ffmpeg:**
-- `aac` - Built-in FFmpeg AAC encoder
-- `aac_at` - AudioToolbox AAC (macOS native, high quality)
-
-**Solution:** In Jellyfin Dashboard:
-1. Go to **Dashboard → Playback → Transcoding**
-2. Find **"Enable FDK AAC encoder"** and **DISABLE IT**
-3. Save
-
-Jellyfin will then use the built-in `aac` encoder which IS available.
+This wrapper is automatically installed by `install.sh`. The native `aac` encoder is high quality and fully compatible.
 
 ### NFS Mount Required
 

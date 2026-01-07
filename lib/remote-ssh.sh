@@ -510,14 +510,33 @@ remote_install_jellyfin_ffmpeg() {
         sudo xattr -rd com.apple.quarantine "$JELLYFIN_FFMPEG_DIR" 2>/dev/null || true
         sudo chmod +x "${JELLYFIN_FFMPEG_DIR}/ffmpeg" "${JELLYFIN_FFMPEG_DIR}/ffprobe"
 
-        # Verification
+        # Create wrapper script to fix libfdk_aac incompatibility
+        # Jellyfin may request libfdk_aac but jellyfin-ffmpeg has --disable-libfdk-aac
+        # Wrapper replaces libfdk_aac with native aac encoder
+        echo "Creating ffmpeg wrapper for codec compatibility..."
+        sudo mv "${JELLYFIN_FFMPEG_DIR}/ffmpeg" "${JELLYFIN_FFMPEG_DIR}/ffmpeg.real"
+        sudo tee "${JELLYFIN_FFMPEG_DIR}/ffmpeg" > /dev/null << '"'"'WRAPPER'"'"'
+#!/bin/bash
+# Transcodarr ffmpeg wrapper
+# Replaces libfdk_aac with aac (native encoder) for compatibility
+# jellyfin-ffmpeg is built with --disable-libfdk-aac
+args=()
+for arg in "$@"; do
+    args+=("${arg/libfdk_aac/aac}")
+done
+exec /opt/jellyfin-ffmpeg/ffmpeg.real "${args[@]}"
+WRAPPER
+        sudo chmod +x "${JELLYFIN_FFMPEG_DIR}/ffmpeg"
+
+        # Verification (use ffmpeg.real for version check)
         echo "Verifying installation..."
-        if "${JELLYFIN_FFMPEG_DIR}/ffmpeg" -filters 2>&1 | grep -q tonemapx; then
+        if "${JELLYFIN_FFMPEG_DIR}/ffmpeg.real" -filters 2>&1 | grep -q tonemapx; then
             echo "SUCCESS: jellyfin-ffmpeg installed with HDR/tonemapx support"
-            "${JELLYFIN_FFMPEG_DIR}/ffmpeg" -version | head -1
+            echo "Wrapper: libfdk_aac -> aac (native encoder)"
+            "${JELLYFIN_FFMPEG_DIR}/ffmpeg.real" -version | head -1
         else
             echo "WARNING: tonemapx filter not detected (may still work for SDR)"
-            "${JELLYFIN_FFMPEG_DIR}/ffmpeg" -version | head -1
+            "${JELLYFIN_FFMPEG_DIR}/ffmpeg.real" -version | head -1
         fi
     '
 
@@ -538,6 +557,59 @@ remote_install_jellyfin_ffmpeg() {
     fi
 }
 
+# Check if wrapper is installed (ffmpeg.real exists)
+remote_check_ffmpeg_wrapper() {
+    local mac_user="$1"
+    local mac_ip="$2"
+    local key_path="$3"
+    ssh_exec "$mac_user" "$mac_ip" "$key_path" \
+        "[[ -f /opt/jellyfin-ffmpeg/ffmpeg.real ]]"
+}
+
+# Install wrapper on existing jellyfin-ffmpeg installation
+remote_install_ffmpeg_wrapper() {
+    local mac_user="$1"
+    local mac_ip="$2"
+    local key_path="$3"
+
+    show_progress "Installing ffmpeg wrapper for codec compatibility..."
+
+    ssh -tt \
+        -o ConnectTimeout=60 \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -i "$key_path" \
+        "${mac_user}@${mac_ip}" '
+        JELLYFIN_FFMPEG_DIR="/opt/jellyfin-ffmpeg"
+
+        # Rename real ffmpeg
+        sudo mv "${JELLYFIN_FFMPEG_DIR}/ffmpeg" "${JELLYFIN_FFMPEG_DIR}/ffmpeg.real"
+
+        # Create wrapper script
+        sudo tee "${JELLYFIN_FFMPEG_DIR}/ffmpeg" > /dev/null << '"'"'WRAPPER'"'"'
+#!/bin/bash
+# Transcodarr ffmpeg wrapper
+# Replaces libfdk_aac with aac (native encoder) for compatibility
+# jellyfin-ffmpeg is built with --disable-libfdk-aac
+args=()
+for arg in "$@"; do
+    args+=("${arg/libfdk_aac/aac}")
+done
+exec /opt/jellyfin-ffmpeg/ffmpeg.real "${args[@]}"
+WRAPPER
+        sudo chmod +x "${JELLYFIN_FFMPEG_DIR}/ffmpeg"
+        echo "Wrapper installed: libfdk_aac -> aac"
+    '
+
+    if remote_check_ffmpeg_wrapper "$mac_user" "$mac_ip" "$key_path"; then
+        show_result true "ffmpeg wrapper installed"
+        return 0
+    else
+        show_warning "wrapper installation may have failed"
+        return 1
+    fi
+}
+
 # Main FFmpeg installation - always installs jellyfin-ffmpeg
 # jellyfin-ffmpeg provides HDR/HDR10+/Dolby Vision support via tonemapx filter
 remote_install_ffmpeg() {
@@ -549,6 +621,11 @@ remote_install_ffmpeg() {
     if remote_check_jellyfin_ffmpeg "$mac_user" "$mac_ip" "$key_path"; then
         show_skip "jellyfin-ffmpeg is already installed (HDR support enabled)"
         set_config "ffmpeg_variant" "jellyfin"
+
+        # Ensure wrapper is installed for existing installations
+        if ! remote_check_ffmpeg_wrapper "$mac_user" "$mac_ip" "$key_path"; then
+            remote_install_ffmpeg_wrapper "$mac_user" "$mac_ip" "$key_path"
+        fi
         return 0
     fi
 
