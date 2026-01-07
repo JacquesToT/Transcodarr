@@ -290,49 +290,6 @@ uninstall_jellyfin_ffmpeg() {
     fi
 }
 
-# User choice between FFmpeg variants
-choose_ffmpeg_variant() {
-    echo ""
-    show_explanation "FFmpeg Variant Selection" \
-        "jellyfin-ffmpeg: Full HDR/HDR10+/Dolby Vision support (recommended)" \
-        "Homebrew FFmpeg: Standard version, SDR transcoding only"
-
-    local choice
-
-    if command -v gum &>/dev/null; then
-        choice=$(gum choose \
-            "jellyfin-ffmpeg (Recommended - HDR support)" \
-            "Homebrew FFmpeg (Standard - SDR only)")
-
-        case "$choice" in
-            "jellyfin-ffmpeg"*)
-                echo "jellyfin"
-                ;;
-            "Homebrew"*)
-                echo "homebrew"
-                ;;
-            *)
-                echo "jellyfin"  # Default to recommended
-                ;;
-        esac
-    else
-        echo ""
-        echo "Choose FFmpeg variant:"
-        echo "  1) jellyfin-ffmpeg (Recommended - HDR support)"
-        echo "  2) Homebrew FFmpeg (Standard - SDR only)"
-        read -p "Choice [1]: " choice
-
-        case "$choice" in
-            2)
-                echo "homebrew"
-                ;;
-            *)
-                echo "jellyfin"
-                ;;
-        esac
-    fi
-}
-
 # Get the path to the active ffmpeg binary
 get_ffmpeg_path() {
     if check_jellyfin_ffmpeg; then
@@ -377,127 +334,19 @@ check_homebrew_ffmpeg() {
         "$HOMEBREW_FFMPEG_BIN" -encoders 2>&1 | grep -q "videotoolbox"
 }
 
-check_ffmpeg_fdk_aac() {
-    [[ -f "$HOMEBREW_FFMPEG_BIN" ]] && \
-        "$HOMEBREW_FFMPEG_BIN" -encoders 2>&1 | grep -q "libfdk_aac"
-}
-
-# Install Homebrew FFmpeg (original function, renamed)
-install_homebrew_ffmpeg() {
-    if check_homebrew_ffmpeg; then
-        show_skip "Homebrew FFmpeg with VideoToolbox is already installed"
-        if check_ffmpeg_fdk_aac; then
-            show_info "libfdk-aac encoder available"
-        fi
-        set_config "ffmpeg_variant" "homebrew"
-        set_config "ffmpeg_path" "$HOMEBREW_FFMPEG_BIN"
-        return 0
-    fi
-
-    show_what_this_does "FFmpeg converts video. We install a version with Apple's VideoToolbox for hardware acceleration."
-
-    echo ""
-    show_info "This may take a few minutes..."
-    echo ""
-
-    # Add the tap
-    show_info "Adding homebrew-ffmpeg tap..."
-    if ! brew tap homebrew-ffmpeg/ffmpeg 2>&1; then
-        show_warning "Could not add homebrew-ffmpeg tap, trying standard FFmpeg..."
-    fi
-
-    # Try to install with fdk-aac first
-    show_info "Installing FFmpeg..."
-    if brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-fdk-aac 2>&1; then
-        show_result true "FFmpeg installed with fdk-aac"
-    else
-        # Try upgrade if already installed
-        show_warning "Trying upgrade..."
-        if ! brew upgrade homebrew-ffmpeg/ffmpeg/ffmpeg 2>&1; then
-            # Last resort: try regular ffmpeg
-            show_warning "Trying standard FFmpeg..."
-            brew install ffmpeg 2>&1 || true
-        fi
-    fi
-
-    echo ""
-
-    # Verify installation
-    if check_homebrew_ffmpeg; then
-        show_result true "FFmpeg with VideoToolbox installed"
-        set_config "ffmpeg_variant" "homebrew"
-        set_config "ffmpeg_path" "$HOMEBREW_FFMPEG_BIN"
-        mark_step_complete "ffmpeg"
-
-        if check_ffmpeg_fdk_aac; then
-            show_info "libfdk-aac encoder available"
-        else
-            show_warning "libfdk-aac not available (aac will be used)"
-        fi
-        return 0
-    else
-        if [[ -f "$HOMEBREW_FFMPEG_BIN" ]]; then
-            show_warning "FFmpeg installed but VideoToolbox not found"
-            show_info "Software encoding will be used"
-            set_config "ffmpeg_variant" "homebrew"
-            set_config "ffmpeg_path" "$HOMEBREW_FFMPEG_BIN"
-            mark_step_complete "ffmpeg"
-            return 0
-        else
-            show_result false "FFmpeg not found"
-            show_info "Try manually: brew install ffmpeg"
-            return 1
-        fi
-    fi
-}
-
-# Main FFmpeg installation (with variant choice)
+# Main FFmpeg installation - always installs jellyfin-ffmpeg
+# jellyfin-ffmpeg provides HDR/HDR10+/Dolby Vision support via tonemapx filter
 install_ffmpeg() {
-    local variant="${1:-}"
-    local force="${2:-false}"
-
-    # Auto-detect existing installation (unless force=true)
-    if [[ "$force" != "true" ]]; then
-        if check_jellyfin_ffmpeg; then
-            show_skip "jellyfin-ffmpeg is already installed (HDR support enabled)"
-            set_config "ffmpeg_variant" "jellyfin"
-            set_config "ffmpeg_path" "$JELLYFIN_FFMPEG_BIN"
-            return 0
-        fi
-
-        if check_homebrew_ffmpeg; then
-            show_skip "Homebrew FFmpeg with VideoToolbox is already installed"
-            set_config "ffmpeg_variant" "homebrew"
-            set_config "ffmpeg_path" "$HOMEBREW_FFMPEG_BIN"
-
-            # Offer upgrade to jellyfin-ffmpeg
-            echo ""
-            show_info "Note: For HDR/Dolby Vision support, consider jellyfin-ffmpeg"
-            if ask_confirm "Upgrade to jellyfin-ffmpeg for HDR support?"; then
-                install_jellyfin_ffmpeg
-                return $?
-            fi
-            return 0
-        fi
+    # Check if jellyfin-ffmpeg is already installed
+    if check_jellyfin_ffmpeg; then
+        show_skip "jellyfin-ffmpeg is already installed (HDR support enabled)"
+        set_config "ffmpeg_variant" "jellyfin"
+        set_config "ffmpeg_path" "$JELLYFIN_FFMPEG_BIN"
+        return 0
     fi
 
-    # Ask user for variant if not specified
-    if [[ -z "$variant" ]]; then
-        variant=$(choose_ffmpeg_variant)
-    fi
-
-    echo ""
-    show_info "Installing: $variant"
-    echo ""
-
-    case "$variant" in
-        jellyfin)
-            install_jellyfin_ffmpeg
-            ;;
-        homebrew|*)
-            install_homebrew_ffmpeg
-            ;;
-    esac
+    # Always install jellyfin-ffmpeg (Homebrew FFmpeg no longer supported)
+    install_jellyfin_ffmpeg
 }
 
 # ============================================================================
