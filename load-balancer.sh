@@ -1,17 +1,23 @@
 #!/bin/bash
 #
 # Transcodarr Load Balancer
-# Round-robin load balancing for rffmpeg transcoding nodes
+# Load-aware balancing for rffmpeg transcoding nodes
 #
-# This daemon watches for transcode completions and rotates hosts
-# to ensure work is distributed across all nodes.
+# This daemon continuously monitors the load on each Mac node and
+# reorders rffmpeg hosts so the least-loaded node is always selected first.
+#
+# How it works:
+# - Checks ffmpeg process count on each Mac via SSH
+# - Calculates load score: (active_transcodes * 100) / weight
+# - Lower score = better candidate (less load relative to capacity)
+# - Reorders hosts so best candidate has lowest ID (selected first by rffmpeg)
 #
 # Usage:
 #   ./load-balancer.sh start     - Start the load balancer daemon
 #   ./load-balancer.sh stop      - Stop the daemon
-#   ./load-balancer.sh status    - Show daemon status
-#   ./load-balancer.sh rotate    - Manually rotate hosts once
-#   ./load-balancer.sh show      - Show current host order
+#   ./load-balancer.sh status    - Show daemon status and current loads
+#   ./load-balancer.sh balance   - Manually rebalance hosts once
+#   ./load-balancer.sh show      - Show current host order with loads
 #
 
 set -e
@@ -21,11 +27,11 @@ PID_FILE="/tmp/transcodarr-lb.pid"
 LOG_FILE="/tmp/transcodarr-lb.log"
 JELLYFIN_CONTAINER="${JELLYFIN_CONTAINER:-jellyfin}"
 
-# Check interval in seconds (how often to check for completed transcodes)
-CHECK_INTERVAL="${CHECK_INTERVAL:-5}"
+# Check interval in seconds (how often to check loads and rebalance)
+CHECK_INTERVAL="${CHECK_INTERVAL:-3}"
 
 # Source library functions
-source "$SCRIPT_DIR/lib/jellyfin-setup.sh" 2>/dev/null || true
+source "$SCRIPT_DIR/lib/state.sh" 2>/dev/null || true
 
 # Colors
 RED='\033[0;31m'
@@ -33,6 +39,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 DIM='\033[2m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 # ============================================================================
@@ -49,6 +56,10 @@ log_info() {
     log "INFO: $*"
 }
 
+log_debug() {
+    [[ "${DEBUG:-false}" == "true" ]] && log "DEBUG: $*"
+}
+
 log_error() {
     log "ERROR: $*"
 }
@@ -59,11 +70,8 @@ is_synology() {
 
 check_docker() {
     if ! command -v docker &>/dev/null; then
-        if is_synology; then
-            # Try Synology's docker location
-            if [[ -x /usr/local/bin/docker ]]; then
-                return 0
-            fi
+        if is_synology && [[ -x /usr/local/bin/docker ]]; then
+            return 0
         fi
         echo -e "${RED}Error: Docker not found${NC}"
         return 1
@@ -79,137 +87,269 @@ check_container() {
     return 0
 }
 
+# Get Mac username from config
+get_mac_user() {
+    local state_file="$HOME/.transcodarr/state.json"
+    if [[ -f "$state_file" ]]; then
+        grep -o '"mac_user": *"[^"]*"' "$state_file" 2>/dev/null | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/'
+    fi
+}
+
 # ============================================================================
-# HOST ROTATION FUNCTIONS
+# LOAD MONITORING FUNCTIONS
 # ============================================================================
 
-# Rotate hosts (move first to end)
-do_rotate() {
+# Get ffmpeg process count on a remote Mac via SSH through container
+# Returns: number of active ffmpeg processes
+get_node_load() {
+    local ip="$1"
+    local mac_user="$2"
+    local container="${3:-$JELLYFIN_CONTAINER}"
+
+    # SSH from container to Mac and count ffmpeg processes
+    local count
+    count=$(sudo docker exec "$container" ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no \
+        "${mac_user}@${ip}" "pgrep -c ffmpeg" 2>/dev/null || echo "0")
+
+    # Ensure we return a number
+    if [[ "$count" =~ ^[0-9]+$ ]]; then
+        echo "$count"
+    else
+        echo "0"
+    fi
+}
+
+# Calculate load score for a node
+# Lower score = better candidate
+# Formula: (active_transcodes * 100) / weight
+# This means a node with weight 4 can handle 4x the load of weight 1
+calculate_load_score() {
+    local load="$1"
+    local weight="$2"
+
+    # Avoid division by zero
+    [[ "$weight" -lt 1 ]] && weight=1
+
+    # Multiply by 100 for integer math precision
+    # Add weight as tiebreaker (higher weight = lower score when equal load)
+    local score=$(( (load * 1000) / weight ))
+
+    # Subtract weight bonus for tiebreaking (higher weight preferred)
+    score=$((score - weight))
+
+    echo "$score"
+}
+
+# Get all hosts with their current loads
+# Output: "IP WEIGHT LOAD SCORE" per line, sorted by score (best first)
+get_hosts_with_load() {
+    local container="${1:-$JELLYFIN_CONTAINER}"
+    local mac_user
+    mac_user=$(get_mac_user)
+
+    if [[ -z "$mac_user" ]]; then
+        mac_user=$(whoami)
+    fi
+
+    # Get hosts from rffmpeg
+    local hosts
+    hosts=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | tail -n +2)
+
+    if [[ -z "$hosts" ]]; then
+        return 1
+    fi
+
+    # For each host, get load and calculate score
+    local result=""
+    while read -r line; do
+        local ip weight
+        ip=$(echo "$line" | awk '{print $1}')
+        weight=$(echo "$line" | awk '{print $4}')
+
+        [[ -z "$ip" ]] && continue
+        [[ -z "$weight" ]] && weight=1
+
+        # Get current load
+        local load
+        load=$(get_node_load "$ip" "$mac_user" "$container")
+
+        # Calculate score
+        local score
+        score=$(calculate_load_score "$load" "$weight")
+
+        result+="$ip $weight $load $score"$'\n'
+    done <<< "$hosts"
+
+    # Sort by score (ascending - lowest score first)
+    echo "$result" | grep -v '^$' | sort -t' ' -k4 -n
+}
+
+# ============================================================================
+# HOST REORDERING FUNCTIONS
+# ============================================================================
+
+# Reorder hosts based on current load
+# Puts the least-loaded node first (lowest ID)
+reorder_by_load() {
     local container="${1:-$JELLYFIN_CONTAINER}"
     local quiet="${2:-false}"
 
-    # Get all hosts with their weights
-    local hosts
-    hosts=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | \
-        tail -n +2 | \
-        awk '{print $1, $3, $4}')  # IP, ID, WEIGHT
+    # Get hosts sorted by load score
+    local sorted_hosts
+    sorted_hosts=$(get_hosts_with_load "$container")
 
-    if [[ -z "$hosts" ]]; then
+    if [[ -z "$sorted_hosts" ]]; then
         [[ "$quiet" != "true" ]] && echo "No hosts configured"
         return 1
     fi
 
     # Count hosts
     local host_count
-    host_count=$(echo "$hosts" | wc -l | tr -d ' ')
+    host_count=$(echo "$sorted_hosts" | wc -l | tr -d ' ')
     if [[ "$host_count" -lt 2 ]]; then
-        [[ "$quiet" != "true" ]] && echo "Only one host, nothing to rotate"
+        [[ "$quiet" != "true" ]] && echo "Only one host, nothing to reorder"
         return 2
     fi
 
-    # Sort by ID to get the first host
-    local sorted_hosts
-    sorted_hosts=$(echo "$hosts" | sort -t' ' -k2 -n)
+    # Check if reordering is needed
+    # Get current first host (lowest ID)
+    local current_first
+    current_first=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | \
+        tail -n +2 | sort -t' ' -k3 -n | head -1 | awk '{print $1}')
 
-    # Get the first host
-    local first_line
-    first_line=$(echo "$sorted_hosts" | head -1)
-    local first_ip first_weight
-    first_ip=$(echo "$first_line" | awk '{print $1}')
-    first_weight=$(echo "$first_line" | awk '{print $3}')
+    # Get best host (lowest score)
+    local best_host
+    best_host=$(echo "$sorted_hosts" | head -1 | awk '{print $1}')
 
-    # Remove and re-add
-    sudo docker exec "$container" rffmpeg remove "$first_ip" 2>/dev/null || return 1
-    sudo docker exec "$container" rffmpeg add "$first_ip" --weight "$first_weight" 2>/dev/null || return 1
+    # If already optimal, skip
+    if [[ "$current_first" == "$best_host" ]]; then
+        log_debug "Host order already optimal ($best_host is first)"
+        return 0
+    fi
 
-    [[ "$quiet" != "true" ]] && echo "Rotated: $first_ip moved to end of queue"
-    log_info "Rotated host $first_ip (weight: $first_weight) to end of queue"
+    log_info "Reordering: moving $best_host to front (was: $current_first)"
+
+    # Remove all hosts
+    local hosts_to_add=""
+    while read -r line; do
+        local ip weight
+        ip=$(echo "$line" | awk '{print $1}')
+        weight=$(echo "$line" | awk '{print $2}')
+
+        [[ -z "$ip" ]] && continue
+
+        sudo docker exec "$container" rffmpeg remove "$ip" 2>/dev/null || true
+        hosts_to_add+="$ip $weight"$'\n'
+    done <<< "$sorted_hosts"
+
+    # Re-add in order (best first = lowest ID)
+    while read -r line; do
+        local ip weight
+        ip=$(echo "$line" | awk '{print $1}')
+        weight=$(echo "$line" | awk '{print $2}')
+
+        [[ -z "$ip" ]] && continue
+
+        sudo docker exec "$container" rffmpeg add "$ip" --weight "$weight" 2>/dev/null || true
+    done <<< "$hosts_to_add"
+
+    [[ "$quiet" != "true" ]] && echo "Reordered: $best_host is now first"
     return 0
 }
 
-# Show current host order
+# Show current host order with loads
 show_hosts() {
     local container="${1:-$JELLYFIN_CONTAINER}"
 
-    echo -e "${CYAN}Current rffmpeg host order:${NC}"
+    echo -e "${CYAN}${BOLD}Current Node Status:${NC}"
     echo ""
 
-    local hosts
-    hosts=$(sudo docker exec "$container" rffmpeg status 2>/dev/null)
+    # Get hosts with load info
+    local hosts_with_load
+    hosts_with_load=$(get_hosts_with_load "$container" 2>/dev/null)
 
-    if [[ -z "$hosts" ]] || [[ $(echo "$hosts" | wc -l) -lt 2 ]]; then
+    if [[ -z "$hosts_with_load" ]]; then
         echo -e "${YELLOW}No hosts configured${NC}"
         return 1
     fi
 
-    # Parse and display with priority indicator
+    # Get current rffmpeg order (by ID)
+    local current_order
+    current_order=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | \
+        tail -n +2 | sort -t' ' -k3 -n | awk '{print $1}')
+
+    # Display each host
     local rank=1
-    echo "$hosts" | tail -n +2 | sort -t' ' -k3 -n | while read -r line; do
-        local ip id weight state
-        ip=$(echo "$line" | awk '{print $1}')
-        id=$(echo "$line" | awk '{print $3}')
-        weight=$(echo "$line" | awk '{print $4}')
-        state=$(echo "$line" | awk '{print $5}')
+    while read -r ip; do
+        [[ -z "$ip" ]] && continue
+
+        # Find this host's info
+        local host_info
+        host_info=$(echo "$hosts_with_load" | grep "^$ip ")
+
+        local weight load score
+        weight=$(echo "$host_info" | awk '{print $2}')
+        load=$(echo "$host_info" | awk '{print $3}')
+        score=$(echo "$host_info" | awk '{print $4}')
+
+        # Format load display
+        local load_display
+        if [[ "$load" -eq 0 ]]; then
+            load_display="${GREEN}idle${NC}"
+        elif [[ "$load" -eq 1 ]]; then
+            load_display="${YELLOW}1 transcode${NC}"
+        else
+            load_display="${RED}${load} transcodes${NC}"
+        fi
 
         if [[ $rank -eq 1 ]]; then
-            echo -e "  ${GREEN}#$rank${NC} $ip ${DIM}(ID: $id, Weight: $weight, State: $state)${NC} ${GREEN}<-- NEXT${NC}"
+            echo -e "  ${GREEN}${BOLD}#$rank${NC} $ip  W:$weight  $load_display  ${GREEN}<-- NEXT${NC}"
         else
-            echo -e "  ${DIM}#$rank${NC} $ip ${DIM}(ID: $id, Weight: $weight, State: $state)${NC}"
+            echo -e "  ${DIM}#$rank${NC} $ip  W:$weight  $load_display"
         fi
         ((rank++))
-    done
+    done <<< "$current_order"
 
     echo ""
+
+    # Show best candidate
+    local best
+    best=$(echo "$hosts_with_load" | head -1 | awk '{print $1}')
+    local first
+    first=$(echo "$current_order" | head -1)
+
+    if [[ "$best" != "$first" ]]; then
+        echo -e "${YELLOW}Note: $best has lower load and should be first${NC}"
+        echo -e "${DIM}Run './load-balancer.sh balance' to reorder${NC}"
+    fi
 }
 
 # ============================================================================
 # DAEMON FUNCTIONS
 # ============================================================================
 
-# Get count of active transcodes
-get_active_transcode_count() {
-    local container="${1:-$JELLYFIN_CONTAINER}"
-
-    # Count ffmpeg processes in the container
-    local count
-    count=$(sudo docker exec "$container" pgrep -c ffmpeg 2>/dev/null || echo "0")
-    echo "$count"
-}
-
-# Track last known transcode count for completion detection
-LAST_TRANSCODE_COUNT=0
-
-# Watch for transcode completions and rotate
 daemon_loop() {
     log_info "Load balancer daemon started (PID: $$)"
+    log_info "Mode: Load-aware balancing"
     log_info "Check interval: ${CHECK_INTERVAL}s"
 
-    LAST_TRANSCODE_COUNT=$(get_active_transcode_count)
-    log_info "Initial active transcodes: $LAST_TRANSCODE_COUNT"
+    local last_order=""
 
     while true; do
         sleep "$CHECK_INTERVAL"
 
-        # Get current transcode count
-        local current_count
-        current_count=$(get_active_transcode_count)
+        # Reorder hosts based on current load
+        if reorder_by_load "$JELLYFIN_CONTAINER" "true"; then
+            # Log if order changed
+            local current_order
+            current_order=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null | \
+                tail -n +2 | sort -t' ' -k3 -n | awk '{print $1}' | tr '\n' ' ')
 
-        # Check if a transcode just completed (count decreased)
-        if [[ "$current_count" -lt "$LAST_TRANSCODE_COUNT" ]]; then
-            local completed=$((LAST_TRANSCODE_COUNT - current_count))
-            log_info "Detected $completed transcode(s) completed (was: $LAST_TRANSCODE_COUNT, now: $current_count)"
-
-            # Rotate hosts for each completion
-            for ((i=0; i<completed; i++)); do
-                if do_rotate "$JELLYFIN_CONTAINER" "true"; then
-                    log_info "Host rotation successful"
-                else
-                    log_error "Host rotation failed"
-                fi
-            done
+            if [[ "$current_order" != "$last_order" ]] && [[ -n "$last_order" ]]; then
+                log_info "Host order changed: $current_order"
+            fi
+            last_order="$current_order"
         fi
-
-        LAST_TRANSCODE_COUNT="$current_count"
     done
 }
 
@@ -239,15 +379,35 @@ start_daemon() {
         return 1
     fi
 
+    # Get mac_user for SSH
+    local mac_user
+    mac_user=$(get_mac_user)
+    if [[ -z "$mac_user" ]]; then
+        echo -e "${YELLOW}Warning: mac_user not found in config, using current user${NC}"
+        mac_user=$(whoami)
+    fi
+
     echo -e "${CYAN}Starting Transcodarr Load Balancer...${NC}"
+    echo -e "  Mode: ${GREEN}Load-aware${NC} (monitors active transcodes per node)"
+    echo -e "  Interval: ${CHECK_INTERVAL}s"
+    echo -e "  Hosts: $host_count"
+    echo ""
 
     # Start daemon in background
-    nohup bash -c "$(declare -f log log_info log_error get_active_transcode_count do_rotate daemon_loop); \
-        JELLYFIN_CONTAINER='$JELLYFIN_CONTAINER'; \
-        CHECK_INTERVAL='$CHECK_INTERVAL'; \
-        LOG_FILE='$LOG_FILE'; \
-        LAST_TRANSCODE_COUNT=0; \
-        daemon_loop" >> "$LOG_FILE" 2>&1 &
+    nohup bash -c "
+        source '$SCRIPT_DIR/lib/state.sh' 2>/dev/null || true
+
+        $(declare -f log log_info log_debug log_error)
+        $(declare -f get_mac_user get_node_load calculate_load_score)
+        $(declare -f get_hosts_with_load reorder_by_load daemon_loop)
+
+        JELLYFIN_CONTAINER='$JELLYFIN_CONTAINER'
+        CHECK_INTERVAL='$CHECK_INTERVAL'
+        LOG_FILE='$LOG_FILE'
+        HOME='$HOME'
+
+        daemon_loop
+    " >> "$LOG_FILE" 2>&1 &
 
     local pid=$!
     echo "$pid" > "$PID_FILE"
@@ -258,11 +418,11 @@ start_daemon() {
         echo -e "${GREEN}Load balancer started successfully${NC}"
         echo -e "  PID: $pid"
         echo -e "  Log: $LOG_FILE"
-        echo -e "  Monitoring $host_count hosts"
         echo ""
         show_hosts
     else
         echo -e "${RED}Failed to start load balancer${NC}"
+        echo -e "${DIM}Check $LOG_FILE for errors${NC}"
         rm -f "$PID_FILE"
         return 1
     fi
@@ -296,7 +456,7 @@ stop_daemon() {
 }
 
 show_status() {
-    echo -e "${CYAN}Transcodarr Load Balancer Status${NC}"
+    echo -e "${CYAN}${BOLD}Transcodarr Load Balancer Status${NC}"
     echo ""
 
     # Daemon status
@@ -305,6 +465,7 @@ show_status() {
         pid=$(cat "$PID_FILE")
         if kill -0 "$pid" 2>/dev/null; then
             echo -e "  Daemon: ${GREEN}Running${NC} (PID: $pid)"
+            echo -e "  Mode: ${GREEN}Load-aware${NC}"
         else
             echo -e "  Daemon: ${RED}Stopped${NC} (stale PID file)"
         fi
@@ -317,16 +478,12 @@ show_status() {
         echo -e "  Container: ${GREEN}$JELLYFIN_CONTAINER${NC}"
     else
         echo -e "  Container: ${RED}Not found${NC}"
+        return 1
     fi
-
-    # Active transcodes
-    local active
-    active=$(get_active_transcode_count 2>/dev/null || echo "?")
-    echo -e "  Active transcodes: $active"
 
     echo ""
 
-    # Show hosts
+    # Show hosts with load
     show_hosts 2>/dev/null || true
 
     # Show recent log entries
@@ -344,21 +501,27 @@ show_status() {
 # ============================================================================
 
 usage() {
-    echo "Transcodarr Load Balancer"
+    echo "Transcodarr Load Balancer (Load-Aware)"
     echo ""
     echo "Usage: $0 <command>"
     echo ""
     echo "Commands:"
     echo "  start    Start the load balancer daemon"
     echo "  stop     Stop the daemon"
-    echo "  status   Show daemon and host status"
-    echo "  rotate   Manually rotate hosts once"
-    echo "  show     Show current host order"
+    echo "  status   Show daemon and host status with current loads"
+    echo "  balance  Manually rebalance hosts based on current load"
+    echo "  show     Show current host order with loads"
     echo "  logs     Show daemon logs"
+    echo ""
+    echo "How it works:"
+    echo "  - Monitors ffmpeg process count on each Mac node"
+    echo "  - Calculates load score: transcodes / weight"
+    echo "  - Reorders hosts so least-loaded node is selected first"
+    echo "  - Higher weight = can handle more concurrent transcodes"
     echo ""
     echo "Environment:"
     echo "  JELLYFIN_CONTAINER  Container name (default: jellyfin)"
-    echo "  CHECK_INTERVAL      Check interval in seconds (default: 5)"
+    echo "  CHECK_INTERVAL      Check interval in seconds (default: 3)"
     echo ""
 }
 
@@ -375,10 +538,12 @@ main() {
         status)
             show_status
             ;;
-        rotate)
+        balance)
             check_docker || exit 1
             check_container || exit 1
-            do_rotate "$JELLYFIN_CONTAINER" "false"
+            reorder_by_load "$JELLYFIN_CONTAINER" "false"
+            echo ""
+            show_hosts
             ;;
         show)
             check_docker || exit 1

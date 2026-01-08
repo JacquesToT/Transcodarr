@@ -1179,21 +1179,24 @@ menu_change_weight() {
 menu_load_balancer() {
     while true; do
         echo ""
-        show_info "Load Balancer (Round-Robin)"
+        show_info "Load Balancer (Load-Aware)"
         echo ""
 
         # Check daemon status
         local daemon_status="Stopped"
+        local daemon_mode=""
         local pid_file="/tmp/transcodarr-lb.pid"
         if [[ -f "$pid_file" ]]; then
             local pid
             pid=$(cat "$pid_file")
             if kill -0 "$pid" 2>/dev/null; then
-                daemon_status="Running (PID: $pid)"
+                daemon_status="${GREEN}Running${NC} (PID: $pid)"
+                daemon_mode="Monitors load and auto-rebalances"
             fi
         fi
 
-        echo "  Current status: $daemon_status"
+        echo -e "  Status: $daemon_status"
+        [[ -n "$daemon_mode" ]] && echo -e "  Mode: $daemon_mode"
         echo ""
 
         # Show current host order
@@ -1210,30 +1213,16 @@ menu_load_balancer() {
             return
         fi
 
-        echo "  Registered hosts: $host_count"
-        echo ""
-
-        # Show host queue
-        echo "  Current queue order:"
-        local rank=1
-        echo "$hosts" | sort -t' ' -k3 -n | while read -r line; do
-            local ip weight
-            ip=$(echo "$line" | awk '{print $1}')
-            weight=$(echo "$line" | awk '{print $4}')
-            if [[ $rank -eq 1 ]]; then
-                echo -e "    ${GREEN}#$rank${NC} $ip (W:$weight) ${GREEN}<-- NEXT${NC}"
-            else
-                echo -e "    ${DIM}#$rank${NC} $ip (W:$weight)"
-            fi
-            ((rank++))
-        done
-        echo ""
+        # Show current status using load-balancer.sh
+        "$SCRIPT_DIR/load-balancer.sh" show 2>/dev/null || {
+            echo "  Registered hosts: $host_count"
+        }
 
         local choice
         choice=$(gum choose \
             "▶️  Start Load Balancer" \
             "⏹️  Stop Load Balancer" \
-            "🔄 Rotate Hosts Now" \
+            "⚖️  Rebalance Now" \
             "📋 View Logs" \
             "⬅️  Back to Main Menu")
 
@@ -1250,9 +1239,9 @@ menu_load_balancer() {
                 echo ""
                 wait_for_user "Press Enter to continue"
                 ;;
-            "🔄 Rotate Hosts Now")
+            "⚖️  Rebalance Now")
                 echo ""
-                "$SCRIPT_DIR/load-balancer.sh" rotate
+                "$SCRIPT_DIR/load-balancer.sh" balance
                 echo ""
                 wait_for_user "Press Enter to continue"
                 ;;

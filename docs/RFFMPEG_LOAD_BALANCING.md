@@ -7,47 +7,58 @@ Dit document beschrijft het load balancing probleem met rffmpeg en onze oplossin
 ### rffmpeg Weight Selectie is Broken
 
 **Verwachting:** rffmpeg zou hosts moeten selecteren op basis van gewogen random selectie.
-- Weight 4 zou 2x zoveel jobs moeten krijgen als weight 2
-- Beide hosts zouden gebruikt moeten worden
 
 **Realiteit:** rffmpeg selecteert hosts op **ID volgorde**, niet op weight.
-
-```
-DEBUG - Trying host ID 3 '192.168.175.43'
-DEBUG - Running SSH test
-DEBUG - SSH test succeeded with retcode 0
-DEBUG - Selecting host as idle
-DEBUG - Found optimal host ID 3 '192.168.175.43'
-```
-
-Het probeert ALLEEN de eerste host (laagste ID), en als die beschikbaar is, wordt die gebruikt. De tweede host wordt **nooit** geprobeerd, tenzij de eerste faalt.
+- De host met de laagste ID wordt altijd eerst geprobeerd
+- Als SSH werkt, wordt die host gebruikt - ongeacht load of weight
+- Andere hosts worden alleen gebruikt als de eerste faalt
 
 ### Geen Load Awareness
 
 rffmpeg checkt NIET:
-- Of de host al transcoding jobs draait
+- Hoeveel ffmpeg processen al draaien op een host
 - Of de host overbelast is
 - Of een andere host "beter" zou zijn
 
+**Resultaat:** Als je 5 transcodes start, gaan ze allemaal naar dezelfde Mac terwijl andere Macs idle zijn.
+
 ---
 
-## Onze Oplossing: Round-Robin Load Balancer
+## Onze Oplossing: Load-Aware Balancer
 
-We hebben **Optie D (Round-Robin via ID Rotatie)** geïmplementeerd. Dit is een daemon die:
+We hebben een **load-aware load balancer** geïmplementeerd die:
 
-1. Actieve ffmpeg processen monitort in de Jellyfin container
-2. Detecteert wanneer een transcode voltooid is
-3. De host queue roteert zodat de volgende transcode naar een andere node gaat
+1. **Elke 3 seconden** de load op elke Mac checkt via SSH
+2. **ffmpeg processen telt** om te bepalen hoeveel transcodes actief zijn
+3. **Load score berekent** op basis van: `(transcodes × 1000) / weight`
+4. **Hosts herordent** zodat de minst belaste host altijd eerst wordt gekozen
 
 ### Hoe Het Werkt
 
 ```
-Vóór rotatie:                Na rotatie:
-#1 192.168.1.10 <-- NEXT     #1 192.168.1.20 <-- NEXT
-#2 192.168.1.20              #2 192.168.1.10
+Mac A: Weight 4, 2 actieve transcodes → Score: 496
+Mac B: Weight 2, 1 actieve transcode  → Score: 498
+
+Mac A wint (lagere score) → komt bovenaan
 ```
 
-Door de eerste host naar het einde van de queue te verplaatsen, krijgt de volgende transcode een andere node toegewezen.
+Bij gelijke load wint de Mac met hogere weight (kan meer aan).
+
+### Voorbeeld: 7 Streams op 2 Macs
+
+```
+Start situatie: Mac A (W:4), Mac B (W:2), beide idle
+
+Stream 1 → Mac A (beide idle, A heeft hogere weight)
+Stream 2 → Mac B (A:1, B:0 → B is relatief leger)
+Stream 3 → Mac A (A:1, B:1 → gelijk, A wint op weight)
+Stream 4 → Mac B (A:2, B:1 → B is relatief leger)
+Stream 5 → Mac A (A:2, B:2 → gelijk, A wint op weight)
+Stream 6 → Mac B (A:3, B:2 → B is relatief leger)
+Stream 7 → Mac A (A:3, B:3 → gelijk, A wint op weight)
+
+Resultaat: Mac A = 4 streams, Mac B = 3 streams
+```
 
 ---
 
@@ -60,13 +71,13 @@ Door de eerste host naar het einde van de queue te verplaatsen, krijgt de volgen
 3. Gebruik de submenu opties:
    - **Start Load Balancer** - Start de daemon
    - **Stop Load Balancer** - Stop de daemon
-   - **Rotate Hosts Now** - Handmatig roteren
+   - **Rebalance Now** - Handmatig herbalanceren
    - **View Logs** - Bekijk recente log entries
 
 ### Via Command Line
 
 ```bash
-# Status bekijken
+# Status bekijken (toont load per node)
 ./load-balancer.sh status
 
 # Daemon starten
@@ -75,10 +86,10 @@ Door de eerste host naar het einde van de queue te verplaatsen, krijgt de volgen
 # Daemon stoppen
 ./load-balancer.sh stop
 
-# Handmatig roteren
-./load-balancer.sh rotate
+# Handmatig herbalanceren
+./load-balancer.sh balance
 
-# Huidige host volgorde tonen
+# Huidige host volgorde met loads tonen
 ./load-balancer.sh show
 
 # Logs bekijken
@@ -94,93 +105,90 @@ cd services/
 sudo ./install-service.sh install
 ```
 
-Dit installeert de load balancer als systemd service:
-
-```bash
-# Service beheren
-sudo systemctl start transcodarr-lb
-sudo systemctl stop transcodarr-lb
-sudo systemctl status transcodarr-lb
-
-# Logs volgen
-journalctl -u transcodarr-lb -f
-```
-
 ---
 
 ## Configuratie
 
-Environment variabelen:
-
 | Variabele | Default | Beschrijving |
 |-----------|---------|--------------|
 | `JELLYFIN_CONTAINER` | `jellyfin` | Naam van de Jellyfin Docker container |
-| `CHECK_INTERVAL` | `5` | Seconden tussen process checks |
+| `CHECK_INTERVAL` | `3` | Seconden tussen load checks |
 
 Voorbeeld:
 ```bash
-CHECK_INTERVAL=10 ./load-balancer.sh start
+CHECK_INTERVAL=5 ./load-balancer.sh start
 ```
 
 ---
 
-## Beperkingen
+## Weight Uitleg
 
-1. **Niet load-aware**: De rotatie is puur sequentieel, niet gebaseerd op CPU/RAM gebruik
-2. **Snelle sequentiële transcodes**: Als meerdere transcodes zeer snel starten, kunnen ze naar dezelfde node gaan voordat rotatie plaatsvindt
-3. **Vereist 2+ nodes**: Met slechts 1 node is load balancing niet mogelijk
+Weight bepaalt de **relatieve capaciteit** van een node:
+
+| Weight | Betekenis |
+|--------|-----------|
+| 1 | Basis capaciteit |
+| 2 | 2× capaciteit van weight 1 |
+| 4 | 4× capaciteit van weight 1 |
+
+**Vuistregel:** Stel weight in op basis van hardware:
+- Mac Mini M1: Weight 2
+- Mac Studio M1 Max: Weight 4
+- Mac Pro: Weight 6+
+
+Bij gelijke load krijgt de Mac met hogere weight de volgende transcode.
 
 ---
 
 ## Technische Details
+
+### Load Score Berekening
+
+```
+score = (active_transcodes × 1000) / weight - weight
+```
+
+- **Lagere score = betere kandidaat**
+- Factor 1000 zorgt voor integer precisie
+- `-weight` is tiebreaker bij gelijke load
+
+### SSH Connectie
+
+De load balancer checkt load via SSH:
+```bash
+docker exec jellyfin ssh user@mac "pgrep -c ffmpeg"
+```
+
+Dit gebruikt de SSH keys die al in de Jellyfin container zijn geconfigureerd.
 
 ### Bestanden
 
 | Bestand | Beschrijving |
 |---------|--------------|
 | `load-balancer.sh` | Hoofd daemon script |
-| `lib/jellyfin-setup.sh` | Bevat `rotate_rffmpeg_hosts()` functie |
-| `services/transcodarr-lb.service` | Systemd service definitie |
-| `services/install-service.sh` | Service installer script |
+| `services/transcodarr-lb.service` | Systemd service |
+| `services/install-service.sh` | Service installer |
 
-### Detectie Methode
+### Logs
 
-De daemon detecteert transcode-voltooiing door:
-
-1. Elke `CHECK_INTERVAL` seconden het aantal actieve ffmpeg processen te tellen
-2. Als het aantal daalt, is er een transcode voltooid
-3. Voor elke voltooide transcode wordt de host queue geroteerd
-
-Dit is betrouwbaarder dan log-parsing omdat het niet afhankelijk is van log-formaat.
-
-### Log Locatie
-
-- Daemon logs: `/tmp/transcodarr-lb.log`
+- Log file: `/tmp/transcodarr-lb.log`
 - PID file: `/tmp/transcodarr-lb.pid`
 
 ---
 
-## Alternatieven (Niet Geïmplementeerd)
+## Beperkingen
 
-### Optie A: rffmpeg Source Aanpassen
-- Zou echte weighted random selectie geven
-- Nadeel: Wordt overschreven bij container updates
-
-### Optie C: Load-Aware Balancer
-- Zou real-time CPU/RAM metrics gebruiken
-- Nadeel: Extra complexiteit, latency bij elke transcode
-
-### Optie E: Jellyfin per-Library Configuratie
-- Handmatige toewijzing van libraries aan nodes
-- Nadeel: Niet dynamisch, vereist handmatig beheer
+1. **Check interval**: Als meerdere transcodes binnen 3 seconden starten, kunnen ze naar dezelfde node gaan voordat rebalancing plaatsvindt
+2. **SSH latency**: Elke check doet SSH calls naar alle nodes (~100ms per node)
+3. **Vereist 2+ nodes**: Met 1 node is load balancing niet nodig
 
 ---
 
-## Commit Historie
+## Vergelijking: Oude vs Nieuwe Aanpak
 
-| Commit | Beschrijving |
-|--------|--------------|
-| `c900dfe` | Monitor weight display en priority ranking |
-| `bf4dc57` | rffmpeg weight-based host reordering workaround |
-| `2955208` | NFS mount stdout pollution fix |
-| (nieuw) | Round-robin load balancer implementatie |
+| Situatie | Zonder LB | Round-Robin (oud) | Load-Aware (nieuw) |
+|----------|-----------|-------------------|---------------------|
+| 2 streams tegelijk | Beide Mac A | Beide Mac A | 1 per Mac ✓ |
+| 5 streams snel | Alle Mac A | Alle Mac A | Verdeeld ✓ |
+| 2 streams na elkaar | Beide Mac A | Verdeeld | Verdeeld ✓ |
+| Ongelijke hardware | Ignoreert | Ignoreert | Respecteert weight ✓ |
