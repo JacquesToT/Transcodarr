@@ -556,13 +556,16 @@ wizard_synology() {
             sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null || true
         else
             show_info "Adding Mac to rffmpeg..."
-            if sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg add "$mac_ip" --weight "$weight" 2>&1 | grep -v "DeprecationWarning"; then
+            local add_output
+            if add_output=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg add "$mac_ip" --weight "$weight" 2>&1); then
+                echo "$add_output" | grep -v "DeprecationWarning" || true
                 echo ""
                 show_result true "Mac added to rffmpeg!"
                 echo ""
                 show_info "Current rffmpeg status:"
                 sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null || true
             else
+                echo "$add_output" | grep -v "DeprecationWarning" || true
                 echo ""
                 show_error "Could not add Mac to rffmpeg"
                 show_info "This can happen if:"
@@ -800,11 +803,14 @@ wizard_add_node() {
         weight=$(select_weight)
 
         echo ""
-        if sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg add "$mac_ip" --weight "$weight" 2>&1 | grep -v "DeprecationWarning"; then
+        local add_output
+        if add_output=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg add "$mac_ip" --weight "$weight" 2>&1); then
+            echo "$add_output" | grep -v "DeprecationWarning" || true
             show_result true "Mac added to rffmpeg with weight $weight!"
             echo ""
             sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null || true
         else
+            echo "$add_output" | grep -v "DeprecationWarning" || true
             show_warning "Could not add Mac - try manually"
             echo -e "  ${GREEN}sudo docker exec $JELLYFIN_CONTAINER rffmpeg add $mac_ip --weight $weight${NC}"
         fi

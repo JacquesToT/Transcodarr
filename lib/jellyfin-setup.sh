@@ -525,6 +525,11 @@ finalize_rffmpeg_setup() {
             chmod 600 /var/lib/jellyfin/.ssh/id_rsa
             chmod 644 /var/lib/jellyfin/.ssh/id_rsa.pub 2>/dev/null || true
         fi
+
+        # 3. Initialize rffmpeg database if it does not exist
+        if [ ! -f /config/rffmpeg/rffmpeg.db ]; then
+            echo "y" | rffmpeg init 2>/dev/null || true
+        fi
     ' 2>/dev/null; then
         # Verify abc user can read the key
         if sudo docker exec -u abc jellyfin test -r /var/lib/jellyfin/.ssh/id_rsa 2>/dev/null; then
