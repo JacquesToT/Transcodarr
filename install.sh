@@ -91,6 +91,67 @@ check_and_install_gum() {
 }
 
 # ============================================================================
+# NAS IP CONFIRMATION
+# ============================================================================
+
+# Confirm NAS IP from config, with option to change
+# Always shows current IP and asks for confirmation to prevent stale config issues
+# Usage: nas_ip=$(confirm_nas_ip) || return 1
+confirm_nas_ip() {
+    local saved_ip
+    saved_ip=$(get_config "nas_ip")
+
+    if [[ -z "$saved_ip" ]]; then
+        # No saved IP - ask for new one
+        local detected_ip
+        detected_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+        [[ -z "$detected_ip" ]] && detected_ip="192.168."
+
+        local new_ip
+        new_ip=$(ask_input "NAS/Synology IP address" "$detected_ip")
+        if [[ -z "$new_ip" ]]; then
+            show_error "NAS IP is required"
+            return 1
+        fi
+        set_config "nas_ip" "$new_ip"
+        echo "$new_ip"
+        return 0
+    fi
+
+    # Show saved IP and test connectivity
+    echo ""
+    show_info "Saved NAS configuration: $saved_ip"
+
+    # Quick ping test
+    if ping -c1 -W2 "$saved_ip" &>/dev/null; then
+        show_result true "NAS reachable at $saved_ip"
+    else
+        show_warning "NAS at $saved_ip is NOT reachable!"
+    fi
+
+    # Always ask for confirmation
+    echo ""
+    if ask_confirm "Use this NAS IP ($saved_ip)?"; then
+        echo "$saved_ip"
+        return 0
+    fi
+
+    # User wants to change - ask for new IP
+    local new_ip
+    new_ip=$(ask_input "NAS/Synology IP address" "$saved_ip")
+    if [[ -z "$new_ip" ]]; then
+        show_error "NAS IP is required"
+        return 1
+    fi
+
+    # Update config with new IP
+    set_config "nas_ip" "$new_ip"
+    show_result true "NAS IP updated to $new_ip"
+    echo "$new_ip"
+    return 0
+}
+
+# ============================================================================
 # ADD NODE PREREQUISITES
 # ============================================================================
 
@@ -545,9 +606,11 @@ wizard_add_node() {
 
     # Load existing configuration from state
     mac_user=$(get_config "mac_user")
-    nas_ip=$(get_config "nas_ip")
     media_path=$(get_config "media_path")
     cache_path=$(get_config "cache_path")
+
+    # Confirm NAS IP (always ask, prevents stale config issues)
+    nas_ip=$(confirm_nas_ip) || return 1
 
     # Step 1: Collect new Mac info
     show_step 1 4 "Add New Mac"
