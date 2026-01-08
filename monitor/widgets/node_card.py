@@ -61,12 +61,14 @@ class NodeCard(Container):
         node: NodeStats,
         jobs: list[TranscodeJob],
         compact: bool = False,
+        rank: int = 0,
         **kwargs
     ):
         super().__init__(**kwargs)
         self.node = node
         self.jobs = jobs
         self.compact = compact
+        self.rank = rank  # Priority rank (1 = highest weight, first to be selected)
 
     def compose(self) -> ComposeResult:
         yield Static(id="node-header")
@@ -90,22 +92,36 @@ class NodeCard(Container):
 
     async def _update_display(self) -> None:
         """Update all display elements."""
-        # Header: Node name and status
+        # Header: Node name, weight, rank, and status
         header = self.query_one("#node-header", Static)
         status_icon = "●" if self.node.is_online else "○"
         status_color = "green" if self.node.is_online else "red"
 
+        # Weight badge with color coding (higher weight = more prominent)
+        weight = self.node.weight
+        if weight >= 4:
+            weight_badge = f"[bold cyan]W:{weight}[/bold cyan]"
+        elif weight >= 2:
+            weight_badge = f"[blue]W:{weight}[/blue]"
+        else:
+            weight_badge = f"[dim]W:{weight}[/dim]"
+
+        # Rank badge (lower rank = higher priority)
+        rank_badge = f"[yellow]#{self.rank}[/yellow]" if self.rank > 0 else ""
+
         if self.node.is_online:
             header_text = (
                 f"[{status_color}]{status_icon}[/{status_color}] "
-                f"[bold]{self.node.hostname}[/bold]"
+                f"[bold]{self.node.hostname}[/bold]  "
+                f"{weight_badge}  {rank_badge}"
             )
         else:
             # Escape error message to prevent Rich markup interpretation
             safe_error = self.node.error.replace("[", "\\[").replace("]", "\\]")
             header_text = (
                 f"[{status_color}]{status_icon}[/{status_color}] "
-                f"[bold dim]{self.node.hostname}[/bold dim] "
+                f"[bold dim]{self.node.hostname}[/bold dim]  "
+                f"{weight_badge}  {rank_badge}  "
                 f"[red]({safe_error})[/red]"
             )
         header.update(header_text)
@@ -203,9 +219,11 @@ class NodeCard(Container):
         self,
         node: NodeStats,
         jobs: list[TranscodeJob],
-        compact: bool = False
+        compact: bool = False,
+        rank: int = 0
     ) -> None:
         """Update the node card with new data."""
+        self.rank = rank
         self.node = node
         self.jobs = jobs
         self.compact = compact

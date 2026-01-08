@@ -213,6 +213,9 @@ class TranscodarrMonitor(App):
                 jobs_by_node[node_ip] = []
             jobs_by_node[node_ip].append(job)
 
+        # Sort nodes by weight (highest first = most work, first to be selected)
+        nodes = sorted(nodes, key=lambda n: n.weight, reverse=True)
+
         # Update or create node cards
         current_ips = {node.ip for node in nodes}
 
@@ -222,14 +225,14 @@ class TranscodarrMonitor(App):
                 card = self._node_cards.pop(ip)
                 card.remove()
 
-        # Update or create cards for each node
-        for node in nodes:
+        # Update or create cards for each node (with rank based on weight order)
+        for rank, node in enumerate(nodes, 1):
             node_jobs = jobs_by_node.get(node.ip, [])
 
             if node.ip in self._node_cards:
                 # Update existing card
                 await self._node_cards[node.ip].update_node(
-                    node, node_jobs, self._compact_mode
+                    node, node_jobs, self._compact_mode, rank
                 )
             else:
                 # Create new card
@@ -237,6 +240,7 @@ class TranscodarrMonitor(App):
                     node=node,
                     jobs=node_jobs,
                     compact=self._compact_mode,
+                    rank=rank,
                     id=f"node-{node.ip.replace('.', '-')}"
                 )
                 self._node_cards[node.ip] = card
