@@ -1217,9 +1217,15 @@ echo 'REMOVED: Synthetic links (reboot required)'
                 needs_reboot=true
                 ;;
             ffmpeg)
-                # FFmpeg removal runs as user, not root
+                # jellyfin-ffmpeg removal requires sudo
                 uninstall_script+="
-echo 'REMOVED: FFmpeg (manual step needed)'
+# Remove jellyfin-ffmpeg
+if [[ -d /opt/jellyfin-ffmpeg ]]; then
+    rm -rf /opt/jellyfin-ffmpeg
+    echo 'REMOVED: jellyfin-ffmpeg'
+else
+    echo 'SKIP: jellyfin-ffmpeg not found'
+fi
 "
                 ;;
             energy)
@@ -1272,20 +1278,7 @@ echo 'REMOVED: SSH key (manual step needed)'
     done
     rm -f "$temp_output"
 
-    # Handle FFmpeg removal (as user via brew)
-    if echo "$components" | grep -q "ffmpeg"; then
-        show_info "Removing FFmpeg via Homebrew..."
-        ssh_exec "$mac_user" "$mac_ip" "$key_path" '
-            if [[ -f /opt/homebrew/bin/brew ]]; then
-                eval "$(/opt/homebrew/bin/brew shellenv)"
-            elif [[ -f /usr/local/bin/brew ]]; then
-                eval "$(/usr/local/bin/brew shellenv)"
-            fi
-            brew uninstall homebrew-ffmpeg/ffmpeg/ffmpeg 2>/dev/null || brew uninstall ffmpeg 2>/dev/null || true
-            brew untap homebrew-ffmpeg/ffmpeg 2>/dev/null || true
-        ' 2>/dev/null
-        show_result true "FFmpeg removed"
-    fi
+    # FFmpeg (jellyfin-ffmpeg) is now removed via sudo in the uninstall script above
 
     # Handle SSH key removal (as user)
     if echo "$components" | grep -q "ssh_key"; then

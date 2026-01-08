@@ -1153,150 +1153,204 @@ menu_change_weight() {
     wait_for_user "Press Enter to return to menu"
 }
 
-# Menu: Remove node
-menu_remove_node() {
-    echo ""
-    show_info "Remove Node"
-    echo ""
-    show_warning ">>> Enter your SYNOLOGY password when prompted <<<"
-    echo ""
+# ============================================================================
+# UNINSTALL MENU
+# ============================================================================
 
-    # Check if Jellyfin container is running
-    if ! sudo docker ps 2>/dev/null | grep -q jellyfin; then
-        show_error "Jellyfin container not running"
-        show_info "Start the container first, then try again"
-        wait_for_user "Press Enter to return to menu"
-        return 1
-    fi
+# Show Uninstall submenu
+menu_uninstall() {
+    while true; do
+        echo ""
+        if command -v gum &> /dev/null; then
+            gum style \
+                --foreground 196 \
+                --border-foreground 196 \
+                --border double \
+                --padding "0 2" \
+                --width 60 \
+                "Uninstall Transcodarr"
+        else
+            echo -e "${RED}════════════════════════════════════════════════════════════${NC}"
+            echo -e "${RED}  Uninstall Transcodarr${NC}"
+            echo -e "${RED}════════════════════════════════════════════════════════════${NC}"
+        fi
+        echo ""
 
-    # Get registered nodes
-    local nodes
-    nodes=$(get_registered_nodes)
+        local choice
+        choice=$(gum choose \
+            "1. Uninstall from a Node" \
+            "2. Uninstall from Synology" \
+            "3. Uninstall from Both" \
+            "4. Back to Main Menu")
 
-    if [[ -z "$nodes" ]]; then
-        show_warning "No nodes registered with rffmpeg"
-        wait_for_user "Press Enter to return to menu"
-        return 0
-    fi
-
-    # Let user select a node
-    echo "Select node to remove:"
-    local selected_node
-    selected_node=$(echo "$nodes" | gum choose)
-
-    if [[ -z "$selected_node" ]]; then
-        return 0
-    fi
-
-    echo ""
-    if ! ask_confirm "Remove $selected_node from rffmpeg?"; then
-        return 0
-    fi
-
-    echo ""
-
-    # Remove from rffmpeg
-    if sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg remove "$selected_node" 2>/dev/null; then
-        show_result true "Node $selected_node removed from rffmpeg"
-    else
-        show_error "Failed to remove node from rffmpeg"
-        wait_for_user "Press Enter to return to menu"
-        return 1
-    fi
-
-    echo ""
-
-    # Offer Mac cleanup
-    if ask_confirm "Also uninstall Transcodarr from this Mac?"; then
-        menu_remote_uninstall "$selected_node"
-    fi
-
-    echo ""
-    wait_for_user "Press Enter to return to menu"
+        case "$choice" in
+            "1. Uninstall from a Node")
+                menu_uninstall_node
+                ;;
+            "2. Uninstall from Synology")
+                menu_uninstall_synology
+                ;;
+            "3. Uninstall from Both")
+                menu_uninstall_both
+                ;;
+            "4. Back to Main Menu"|"")
+                return 0
+                ;;
+        esac
+    done
 }
 
-# Menu: Remote uninstall components from Mac
-menu_remote_uninstall() {
-    local mac_ip="$1"
-
+# Uninstall from a specific Mac node
+menu_uninstall_node() {
     echo ""
-    show_info "Select components to remove from Mac $mac_ip"
-    echo ""
-    show_info "Use Space to select, Enter to confirm"
+    show_step 1 3 "Select Node"
     echo ""
 
-    # Multi-select components
+    # Get Mac IP - either from user input or registered nodes
+    local mac_ip=""
+    local mac_user=""
+
+    # Check if Jellyfin is running and get registered nodes
+    local nodes=""
+    if sudo docker ps 2>/dev/null | grep -q jellyfin; then
+        nodes=$(get_registered_nodes 2>/dev/null || true)
+    fi
+
+    if [[ -n "$nodes" ]]; then
+        echo "  Select a registered node or enter a new IP:"
+        echo ""
+        local node_options
+        node_options=$(echo "$nodes"; echo "Enter IP manually")
+        local selected
+        selected=$(echo "$node_options" | gum choose)
+
+        if [[ -z "$selected" ]]; then
+            return 0
+        fi
+
+        if [[ "$selected" == "Enter IP manually" ]]; then
+            mac_ip=$(ask_input "Mac IP address" "")
+        else
+            mac_ip="$selected"
+        fi
+    else
+        mac_ip=$(ask_input "Mac IP address to uninstall from" "")
+    fi
+
+    if [[ -z "$mac_ip" ]]; then
+        show_error "No IP address provided"
+        wait_for_user "Press Enter to continue"
+        return 1
+    fi
+
+    # Get Mac username
+    mac_user=$(get_config "mac_user" 2>/dev/null || true)
+    if [[ -z "$mac_user" ]]; then
+        mac_user=$(ask_input "Mac username" "")
+    fi
+
+    if [[ -z "$mac_user" ]]; then
+        show_error "No username provided"
+        wait_for_user "Press Enter to continue"
+        return 1
+    fi
+
+    echo ""
+    show_step 2 3 "Components to Remove"
+    echo ""
+
+    echo "  The following will be removed from $mac_ip:"
+    echo ""
+    echo "  Use Space to select/deselect, Enter to confirm"
+    echo ""
+
+    # Multi-select components with defaults
     local selected
-    selected=$(gum choose --no-limit \
-        "LaunchDaemons (NFS auto-mounts)" \
-        "Mount scripts (/usr/local/bin/mount-*.sh)" \
-        "Synthetic links (/data, /config) - requires reboot" \
-        "FFmpeg" \
-        "Energy settings (re-enable sleep)" \
-        "SSH key (revoke Transcodarr access)")
+    selected=$(gum choose --no-limit --selected="NFS mounts & scripts,LaunchDaemons,Log files,jellyfin-ffmpeg,SSH key" \
+        "NFS mounts & scripts" \
+        "LaunchDaemons" \
+        "Log files" \
+        "jellyfin-ffmpeg" \
+        "SSH key" \
+        "Reset energy settings" \
+        "Remove synthetic links (reboot required)")
 
     if [[ -z "$selected" ]]; then
         show_info "No components selected"
+        wait_for_user "Press Enter to continue"
         return 0
     fi
 
     # Convert selections to component names
     local components=""
-    echo "$selected" | while read -r line; do
-        case "$line" in
-            "LaunchDaemons"*) components+="launchdaemons " ;;
-            "Mount scripts"*) components+="mount_scripts " ;;
-            "Synthetic links"*) components+="synthetic " ;;
-            "FFmpeg"*) components+="ffmpeg " ;;
-            "Energy settings"*) components+="energy " ;;
-            "SSH key"*) components+="ssh_key " ;;
-        esac
-    done
-
-    # Build components string properly
-    components=""
     while IFS= read -r line; do
         case "$line" in
-            "LaunchDaemons"*) components+="launchdaemons " ;;
-            "Mount scripts"*) components+="mount_scripts " ;;
-            "Synthetic links"*) components+="synthetic " ;;
-            "FFmpeg"*) components+="ffmpeg " ;;
-            "Energy settings"*) components+="energy " ;;
-            "SSH key"*) components+="ssh_key " ;;
+            "NFS mounts & scripts") components+="mount_scripts " ;;
+            "LaunchDaemons") components+="launchdaemons " ;;
+            "Log files") components+="mount_scripts " ;;  # logs included with mount_scripts
+            "jellyfin-ffmpeg") components+="ffmpeg " ;;
+            "SSH key") components+="ssh_key " ;;
+            "Reset energy settings") components+="energy " ;;
+            "Remove synthetic links"*) components+="synthetic " ;;
         esac
     done <<< "$selected"
 
-    if [[ -z "$components" ]]; then
-        show_info "No components selected"
+    echo ""
+    show_step 3 3 "Confirm"
+    echo ""
+
+    gum style --foreground 226 --border double --padding "1 2" \
+        "⚠ WARNING" \
+        "" \
+        "This will remove Transcodarr from:" \
+        "$mac_ip" \
+        "" \
+        "Components: $components"
+    echo ""
+
+    if ! ask_confirm "Continue with uninstall?"; then
         return 0
     fi
 
-    # Get SSH key path and username
+    # Get SSH key path
     local key_path="${OUTPUT_DIR}/rffmpeg/.ssh/id_rsa"
-    local mac_user
-    mac_user=$(get_config "mac_user")
-
-    if [[ -z "$mac_user" ]]; then
-        show_warning "Mac username not found in configuration"
-        mac_user=$(ask_input "Mac username" "")
-    fi
 
     if [[ ! -f "$key_path" ]]; then
-        show_error "SSH key not found"
+        show_error "SSH key not found at $key_path"
         show_info "Cannot connect to Mac without SSH key"
+        wait_for_user "Press Enter to continue"
         return 1
     fi
 
     # Check Mac is reachable
     if ! test_mac_reachable "$mac_ip"; then
         show_error "Mac at $mac_ip is not reachable"
+        wait_for_user "Press Enter to continue"
         return 1
     fi
+
+    echo ""
+    show_info "Uninstalling from Mac..."
+    echo ""
+    show_warning ">>> Enter your MAC password when prompted <<<"
+    echo ""
 
     # Run uninstall
     local result
     remote_uninstall_components "$mac_user" "$mac_ip" "$key_path" $components
     result=$?
+
+    # Also remove from rffmpeg if container is running
+    if sudo docker ps 2>/dev/null | grep -q jellyfin; then
+        echo ""
+        if ask_confirm "Also remove $mac_ip from rffmpeg?"; then
+            if sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg remove "$mac_ip" 2>/dev/null; then
+                show_result true "Node removed from rffmpeg"
+            else
+                show_warning "Could not remove from rffmpeg (may not be registered)"
+            fi
+        fi
+    fi
 
     if [[ $result -eq 2 ]]; then
         echo ""
@@ -1307,7 +1361,266 @@ menu_remote_uninstall() {
         fi
     fi
 
-    return 0
+    echo ""
+    show_result true "Uninstall from node complete"
+    wait_for_user "Press Enter to continue"
+}
+
+# Uninstall Transcodarr from Synology
+menu_uninstall_synology() {
+    echo ""
+    show_step 1 2 "Components to Remove"
+    echo ""
+
+    echo "  The following will be removed from this Synology:"
+    echo ""
+
+    gum style --foreground 252 --padding "0 2" \
+        "[✓] State file (~/.transcodarr)" \
+        "[✓] Output files (SSH keys, configs)" \
+        "[✓] rffmpeg config from Jellyfin" \
+        "[✓] Remove all nodes from rffmpeg"
+    echo ""
+
+    echo ""
+    show_step 2 2 "Confirm"
+    echo ""
+
+    gum style --foreground 226 --border double --padding "1 2" \
+        "⚠ WARNING" \
+        "" \
+        "This will remove Transcodarr config" \
+        "from this Synology." \
+        "" \
+        "You will need to reinstall to use" \
+        "distributed transcoding again."
+    echo ""
+
+    if ! ask_confirm "Continue with uninstall?"; then
+        return 0
+    fi
+
+    echo ""
+    show_warning ">>> Enter your SYNOLOGY password when prompted <<<"
+    echo ""
+
+    # Remove all nodes from rffmpeg first
+    if sudo docker ps 2>/dev/null | grep -q jellyfin; then
+        show_info "Removing all nodes from rffmpeg..."
+        local nodes
+        nodes=$(get_registered_nodes 2>/dev/null || true)
+
+        if [[ -n "$nodes" ]]; then
+            while IFS= read -r node_ip; do
+                if [[ -n "$node_ip" ]]; then
+                    sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg remove "$node_ip" 2>/dev/null || true
+                    show_result true "Removed $node_ip from rffmpeg"
+                fi
+            done <<< "$nodes"
+        fi
+
+        # Remove rffmpeg config from Jellyfin
+        show_info "Removing rffmpeg config from Jellyfin..."
+        local jellyfin_config
+        jellyfin_config=$(get_config "jellyfin_config" 2>/dev/null || echo "/volume1/docker/jellyfin")
+        if [[ -d "${jellyfin_config}/rffmpeg" ]]; then
+            sudo rm -rf "${jellyfin_config}/rffmpeg"
+            show_result true "Removed rffmpeg config"
+        else
+            show_skip "rffmpeg config not found"
+        fi
+    else
+        show_warning "Jellyfin container not running - skipping rffmpeg cleanup"
+    fi
+
+    # Remove output directory
+    show_info "Removing output directory..."
+    if [[ -d "$OUTPUT_DIR" ]]; then
+        rm -rf "$OUTPUT_DIR"
+        show_result true "Removed $OUTPUT_DIR"
+    else
+        show_skip "Output directory not found"
+    fi
+
+    # Remove state file
+    show_info "Removing state file..."
+    if [[ -d "$STATE_DIR" ]]; then
+        rm -rf "$STATE_DIR"
+        show_result true "Removed ~/.transcodarr"
+    else
+        show_skip "State directory not found"
+    fi
+
+    echo ""
+    show_result true "Synology uninstall complete"
+    echo ""
+    show_info "To reinstall: git clone the repository and run ./install.sh"
+    wait_for_user "Press Enter to continue"
+}
+
+# Uninstall from both Mac nodes and Synology
+menu_uninstall_both() {
+    echo ""
+    show_step 1 3 "Nodes to Remove"
+    echo ""
+
+    # Get registered nodes
+    local nodes=""
+    local node_count=0
+
+    if sudo docker ps 2>/dev/null | grep -q jellyfin; then
+        nodes=$(get_registered_nodes 2>/dev/null || true)
+        if [[ -n "$nodes" ]]; then
+            node_count=$(echo "$nodes" | wc -l | tr -d ' ')
+        fi
+    fi
+
+    if [[ -n "$nodes" ]]; then
+        echo "  Found nodes in rffmpeg:"
+        echo ""
+        while IFS= read -r node_ip; do
+            if [[ -n "$node_ip" ]]; then
+                local weight
+                weight=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null | grep "$node_ip" | awk '{print $NF}' || echo "?")
+                echo "  • $node_ip (weight: $weight)"
+            fi
+        done <<< "$nodes"
+        echo ""
+        echo "  All nodes will be uninstalled."
+    else
+        show_warning "No nodes found in rffmpeg"
+        echo ""
+        echo "  Would you like to enter Mac IPs manually?"
+        echo ""
+        if ask_confirm "Enter IPs manually?"; then
+            nodes=$(ask_input "Mac IP addresses (comma-separated)" "")
+            nodes=$(echo "$nodes" | tr ',' '\n')
+            node_count=$(echo "$nodes" | wc -l | tr -d ' ')
+        fi
+    fi
+
+    echo ""
+    show_step 2 3 "Components"
+    echo ""
+
+    echo "  Mac cleanup (per node):"
+    gum style --foreground 252 --padding "0 2" \
+        "[✓] NFS, scripts, daemons, logs" \
+        "[✓] jellyfin-ffmpeg" \
+        "[ ] Reset energy + synthetic"
+    echo ""
+    echo "  Synology cleanup:"
+    gum style --foreground 252 --padding "0 2" \
+        "[✓] State + output files" \
+        "[✓] rffmpeg config"
+    echo ""
+
+    local include_energy_synthetic=false
+    if ask_confirm "Also reset energy settings and remove synthetic links?"; then
+        include_energy_synthetic=true
+    fi
+
+    echo ""
+    show_step 3 3 "Final Confirm"
+    echo ""
+
+    gum style --foreground 196 --border double --padding "1 2" \
+        "⚠ FINAL WARNING" \
+        "" \
+        "This will COMPLETELY remove" \
+        "Transcodarr from:" \
+        "" \
+        "• $node_count Mac node(s)" \
+        "• This Synology"
+    echo ""
+
+    if ! ask_confirm "Are you absolutely sure?"; then
+        return 0
+    fi
+
+    echo ""
+    show_warning ">>> Enter passwords when prompted (Mac & Synology) <<<"
+    echo ""
+
+    # Get SSH key and username
+    local key_path="${OUTPUT_DIR}/rffmpeg/.ssh/id_rsa"
+    local mac_user
+    mac_user=$(get_config "mac_user" 2>/dev/null || true)
+
+    if [[ -z "$mac_user" ]]; then
+        mac_user=$(ask_input "Mac username" "")
+    fi
+
+    # Uninstall from each Mac node
+    if [[ -n "$nodes" ]] && [[ -f "$key_path" ]]; then
+        while IFS= read -r mac_ip; do
+            if [[ -n "$mac_ip" ]]; then
+                show_info "Uninstalling from $mac_ip..."
+
+                # Check if Mac is reachable
+                if test_mac_reachable "$mac_ip"; then
+                    # Build component list
+                    local components="launchdaemons mount_scripts ffmpeg ssh_key"
+                    if [[ "$include_energy_synthetic" == true ]]; then
+                        components+=" energy synthetic"
+                    fi
+
+                    # Run uninstall
+                    remote_uninstall_components "$mac_user" "$mac_ip" "$key_path" $components || true
+                    show_result true "Uninstalled from $mac_ip"
+                else
+                    show_warning "Mac $mac_ip not reachable - skipping"
+                fi
+            fi
+        done <<< "$nodes"
+    else
+        show_warning "Cannot uninstall from Macs (no SSH key or no nodes)"
+    fi
+
+    # Now uninstall from Synology
+    echo ""
+    show_info "Cleaning up Synology..."
+    echo ""
+
+    # Remove all nodes from rffmpeg
+    if sudo docker ps 2>/dev/null | grep -q jellyfin; then
+        local registered_nodes
+        registered_nodes=$(get_registered_nodes 2>/dev/null || true)
+        if [[ -n "$registered_nodes" ]]; then
+            while IFS= read -r node_ip; do
+                if [[ -n "$node_ip" ]]; then
+                    sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg remove "$node_ip" 2>/dev/null || true
+                fi
+            done <<< "$registered_nodes"
+            show_result true "Removed all nodes from rffmpeg"
+        fi
+
+        # Remove rffmpeg config
+        local jellyfin_config
+        jellyfin_config=$(get_config "jellyfin_config" 2>/dev/null || echo "/volume1/docker/jellyfin")
+        if [[ -d "${jellyfin_config}/rffmpeg" ]]; then
+            sudo rm -rf "${jellyfin_config}/rffmpeg"
+            show_result true "Removed rffmpeg config"
+        fi
+    fi
+
+    # Remove output and state directories
+    [[ -d "$OUTPUT_DIR" ]] && rm -rf "$OUTPUT_DIR" && show_result true "Removed output directory"
+    [[ -d "$STATE_DIR" ]] && rm -rf "$STATE_DIR" && show_result true "Removed state directory"
+
+    echo ""
+    gum style --foreground 46 --border double --padding "1 2" \
+        "✓ COMPLETE UNINSTALL FINISHED" \
+        "" \
+        "Transcodarr has been removed from" \
+        "all nodes and this Synology." \
+        "" \
+        "To reinstall:" \
+        "git clone + ./install.sh"
+    echo ""
+
+    wait_for_user "Press Enter to exit"
+    exit 0
 }
 
 # Menu: Show documentation
@@ -1428,7 +1741,7 @@ show_main_menu() {
     # Node management options (only if configured)
     if [[ "$install_status" != "first_time" ]]; then
         menu_options+=("⚖️  Change Node Weight")
-        menu_options+=("➖ Remove Node")
+        menu_options+=("🗑️  Uninstall Transcodarr")
         menu_options+=("🔑 Fix SSH Keys")
     fi
 
@@ -1537,8 +1850,8 @@ main_menu_loop() {
             "⚖️  Change Node Weight")
                 menu_change_weight
                 ;;
-            "➖ Remove Node")
-                menu_remove_node
+            "🗑️  Uninstall Transcodarr")
+                menu_uninstall
                 ;;
             "📖 Documentation")
                 menu_documentation

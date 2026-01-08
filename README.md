@@ -139,6 +139,7 @@ sudo docker stop jellyfin
 # Fix ownership (replace 1026:100 with your PUID:PGID)
 sudo chown -R 1026:100 /volume1/docker/jellyfin
 sudo chmod -R 755 /volume1/docker/jellyfin
+sudo chmod -R 755 /volume1/data/media
 
 # Verify - should show your user and "users" group
 ls -la /volume1/docker/jellyfin
