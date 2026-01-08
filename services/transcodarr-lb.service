@@ -1,0 +1,25 @@
+[Unit]
+Description=Transcodarr Load Balancer
+Documentation=https://github.com/your-repo/transcodarr
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/opt/transcodarr/load-balancer.sh start
+ExecStop=/opt/transcodarr/load-balancer.sh stop
+Restart=on-failure
+RestartSec=10
+Environment=JELLYFIN_CONTAINER=jellyfin
+Environment=CHECK_INTERVAL=5
+
+# Run as root (needed for docker access on Synology)
+User=root
+Group=root
+
+# Logging
+StandardOutput=append:/var/log/transcodarr-lb.log
+StandardError=append:/var/log/transcodarr-lb.log
+
+[Install]
+WantedBy=multi-user.target

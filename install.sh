@@ -1173,6 +1173,109 @@ menu_change_weight() {
 }
 
 # ============================================================================
+# LOAD BALANCER MENU
+# ============================================================================
+
+menu_load_balancer() {
+    while true; do
+        echo ""
+        show_info "Load Balancer (Round-Robin)"
+        echo ""
+
+        # Check daemon status
+        local daemon_status="Stopped"
+        local pid_file="/tmp/transcodarr-lb.pid"
+        if [[ -f "$pid_file" ]]; then
+            local pid
+            pid=$(cat "$pid_file")
+            if kill -0 "$pid" 2>/dev/null; then
+                daemon_status="Running (PID: $pid)"
+            fi
+        fi
+
+        echo "  Current status: $daemon_status"
+        echo ""
+
+        # Show current host order
+        local hosts
+        hosts=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null | tail -n +2)
+        local host_count
+        host_count=$(echo "$hosts" | grep -c . 2>/dev/null || echo "0")
+
+        if [[ "$host_count" -lt 2 ]]; then
+            show_warning "Load balancing requires at least 2 nodes"
+            show_info "Add more nodes with 'Add a new Mac node'"
+            echo ""
+            wait_for_user "Press Enter to return to menu"
+            return
+        fi
+
+        echo "  Registered hosts: $host_count"
+        echo ""
+
+        # Show host queue
+        echo "  Current queue order:"
+        local rank=1
+        echo "$hosts" | sort -t' ' -k3 -n | while read -r line; do
+            local ip weight
+            ip=$(echo "$line" | awk '{print $1}')
+            weight=$(echo "$line" | awk '{print $4}')
+            if [[ $rank -eq 1 ]]; then
+                echo -e "    ${GREEN}#$rank${NC} $ip (W:$weight) ${GREEN}<-- NEXT${NC}"
+            else
+                echo -e "    ${DIM}#$rank${NC} $ip (W:$weight)"
+            fi
+            ((rank++))
+        done
+        echo ""
+
+        local choice
+        choice=$(gum choose \
+            "▶️  Start Load Balancer" \
+            "⏹️  Stop Load Balancer" \
+            "🔄 Rotate Hosts Now" \
+            "📋 View Logs" \
+            "⬅️  Back to Main Menu")
+
+        case "$choice" in
+            "▶️  Start Load Balancer")
+                echo ""
+                "$SCRIPT_DIR/load-balancer.sh" start
+                echo ""
+                wait_for_user "Press Enter to continue"
+                ;;
+            "⏹️  Stop Load Balancer")
+                echo ""
+                "$SCRIPT_DIR/load-balancer.sh" stop
+                echo ""
+                wait_for_user "Press Enter to continue"
+                ;;
+            "🔄 Rotate Hosts Now")
+                echo ""
+                "$SCRIPT_DIR/load-balancer.sh" rotate
+                echo ""
+                wait_for_user "Press Enter to continue"
+                ;;
+            "📋 View Logs")
+                echo ""
+                if [[ -f "/tmp/transcodarr-lb.log" ]]; then
+                    echo "Last 20 log entries:"
+                    echo ""
+                    tail -20 /tmp/transcodarr-lb.log
+                else
+                    echo "No log file found yet"
+                fi
+                echo ""
+                wait_for_user "Press Enter to continue"
+                ;;
+            "⬅️  Back to Main Menu"|"")
+                return
+                ;;
+        esac
+    done
+}
+
+# ============================================================================
 # UNINSTALL MENU
 # ============================================================================
 
@@ -1785,6 +1888,7 @@ show_main_menu() {
     if [[ "$install_status" != "first_time" ]]; then
         menu_options+=("➕ Add a new Mac node")
         menu_options+=("⚖️  Change Node Weight")
+        menu_options+=("🔄 Load Balancer")
         menu_options+=("🗑️  Uninstall Transcodarr")
         menu_options+=("🔑 Fix SSH Keys")
     fi
@@ -1893,6 +1997,9 @@ main_menu_loop() {
                 ;;
             "⚖️  Change Node Weight")
                 menu_change_weight
+                ;;
+            "🔄 Load Balancer")
+                menu_load_balancer
                 ;;
             "🗑️  Uninstall Transcodarr")
                 menu_uninstall

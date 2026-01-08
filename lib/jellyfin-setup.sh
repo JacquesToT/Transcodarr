@@ -595,6 +595,73 @@ reorder_rffmpeg_hosts() {
     show_result true "Hosts reordered by weight"
 }
 
+# Rotate rffmpeg hosts for round-robin load balancing
+# Moves the first host (lowest ID) to the end (highest ID)
+# This ensures each new transcode goes to a different host
+# Returns: 0 on success, 1 on error, 2 if less than 2 hosts
+rotate_rffmpeg_hosts() {
+    local container="${1:-$JELLYFIN_CONTAINER}"
+    [[ -z "$container" ]] && container="jellyfin"
+    local quiet="${2:-false}"  # Set to "true" to suppress output
+
+    # Get all hosts with their weights: "IP WEIGHT" per line, sorted by ID (first = lowest ID)
+    local hosts
+    hosts=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | \
+        tail -n +2 | \
+        awk '{print $1, $3, $4}')  # IP, ID, WEIGHT
+
+    if [[ -z "$hosts" ]]; then
+        [[ "$quiet" != "true" ]] && echo "No hosts configured" >&2
+        return 1
+    fi
+
+    # Count hosts - only rotate if more than 1
+    local host_count
+    host_count=$(echo "$hosts" | wc -l | tr -d ' ')
+    if [[ "$host_count" -lt 2 ]]; then
+        [[ "$quiet" != "true" ]] && echo "Only one host, nothing to rotate" >&2
+        return 2
+    fi
+
+    # Sort by ID to get the first host (lowest ID = currently selected first)
+    local sorted_hosts
+    sorted_hosts=$(echo "$hosts" | sort -t' ' -k2 -n)
+
+    # Get the first host (will be moved to end)
+    local first_line
+    first_line=$(echo "$sorted_hosts" | head -1)
+    local first_ip first_weight
+    first_ip=$(echo "$first_line" | awk '{print $1}')
+    first_weight=$(echo "$first_line" | awk '{print $3}')
+
+    # Remove first host
+    if ! sudo docker exec "$container" rffmpeg remove "$first_ip" 2>/dev/null; then
+        [[ "$quiet" != "true" ]] && echo "Failed to remove host $first_ip" >&2
+        return 1
+    fi
+
+    # Re-add at the end (will get highest ID)
+    if ! sudo docker exec "$container" rffmpeg add "$first_ip" --weight "$first_weight" 2>/dev/null; then
+        [[ "$quiet" != "true" ]] && echo "Failed to re-add host $first_ip" >&2
+        return 1
+    fi
+
+    [[ "$quiet" != "true" ]] && echo "Rotated: $first_ip moved to end of queue"
+    return 0
+}
+
+# Get current rffmpeg host order (for status display)
+# Returns: "IP WEIGHT ID" per line, sorted by ID
+get_rffmpeg_host_order() {
+    local container="${1:-$JELLYFIN_CONTAINER}"
+    [[ -z "$container" ]] && container="jellyfin"
+
+    sudo docker exec "$container" rffmpeg status 2>/dev/null | \
+        tail -n +2 | \
+        awk '{print $1, $4, $3}' | \
+        sort -t' ' -k3 -n
+}
+
 # ============================================================================
 # SUMMARY
 # ============================================================================
