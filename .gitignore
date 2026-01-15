@@ -39,3 +39,7 @@ node_modules/
 dist/
 build/
 *.code-workspace
+
+# FewWord context plugin
+.fewword/scratch/
+.fewword/index/

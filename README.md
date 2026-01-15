@@ -66,7 +66,6 @@ This project creates network pathways between your NAS and Mac(s). Understand th
 **Mac (Apple Silicon):**
 - M1/M2/M3/M4
 - macOS Sequoia 15.x or later
-- Remote Login (SSH) enabled
 
 ## Before You Start
 
@@ -86,12 +85,12 @@ Collect these values:
 
 1. Open **System Settings** → **General** → **Sharing**
 2. Enable **"Remote Login"**
-
+<img src="screenshots/Schermafbeelding 2026-01-15 11.37.46 copy.png" width="25%">
 ## Step 1.2: Enable SSH login on your Synology
 
 1. Open **Control Panel** → **Terminal & SNMP**
 2. Enable **"SSH Service"**
-
+<img src="screenshots/Schermafbeelding 2026-01-15 11.33.58.png" width="50%">
 ---
 
 ## Step 2: Setup Jellyfin
@@ -104,9 +103,9 @@ services:
     image: linuxserver/jellyfin
     container_name: jellyfin
     environment:
-      - PUID=1026                                      # Your user ID (run: id)
-      - PGID=100                                       # Your group ID (run: id)
-      - TZ=Europe/Amsterdam                            # Your timezone
+      - PUID=1026                                     # Your user ID (run: id)
+      - PGID=100                                      # Your group ID (run: id)
+      - TZ=Europe/Amsterdam                           # Your timezone
       - JELLYFIN_PublishedServerUrl=192.168.1.100     # Your Synology IP
       - DOCKER_MODS=linuxserver/mods:jellyfin-rffmpeg # Required for remote transcoding
       - FFMPEG_PATH=/usr/local/bin/ffmpeg             # Required for rffmpeg
@@ -126,17 +125,19 @@ services:
 > **Note:** Find your PUID/PGID by running `id` in SSH on your Synology.
 
 Start the container and wait for FFmpeg to install.
-(can take a while)
+(can take a while, for me it took about 8 minutes)
 
+Now check if jellyfin will start
 ### Fix Permissions (if Jellyfin won't start)
 
 If Jellyfin fails to start, fix the folder permissions:
+Login through SSH on your Synology and run the following commands:
 
 ```bash
 # Stop the container
 sudo docker stop jellyfin
 
-# Fix ownership (replace 1026:100 with your PUID:PGID)
+# Fix ownership (replace 1026:100 with your PUID:PGID, and the correct paths)
 sudo chown -R 1026:100 /volume1/docker/jellyfin
 sudo chmod -R 755 /volume1/docker/jellyfin
 sudo chmod -R 755 /volume1/data/media
@@ -148,7 +149,9 @@ ls -la /volume1/docker/jellyfin
 sudo docker start jellyfin
 ```
 
-> ⏳ **FFmpeg takes a while to install** (compiling from source). Be patient and make sure Jellyfin is started before running the installer.
+<img src="screenshots/Schermafbeelding 2026-01-15 11.56.02.png" width="50%">
+
+Make sure that Jellyfin is running.
 
 ---
 
@@ -159,14 +162,14 @@ sudo docker start jellyfin
 1. Open **Control Panel** → **User & Group** → **Advanced**
 2. Check **"Enable user home service"**
 3. Click **Apply**
-
+<img src="screenshots/Schermafbeelding 2026-01-15 12.00.29.png" width="35%">
 ### Enable NFS Service
 
 1. Open **Control Panel** → **File Services** → **NFS**
 2. Check **"Enable NFS service"**
 3. Set Maximum NFS protocol to **NFSv4.1**
 4. Click **Apply**
-
+<img src="screenshots/Schermafbeelding 2026-01-15 12.01.46.png" width="35%">
 ### Set NFS Permissions
 
 > **Note:** Synology NFS permissions work at the **shared folder level**, not subfolders. You need to enable NFS on the parent shared folders (`data` and `docker`), or create dedicated shared folders for more granular control.
@@ -184,6 +187,11 @@ Go to **Control Panel** → **Shared Folder**, select each shared folder, click 
 
 > **Tip:** For better security, create a dedicated shared folder (e.g., `jellyfin-cache`) instead of exposing the entire `docker` folder via NFS.
 
+For the Data folder:
+<img src="screenshots/Schermafbeelding 2026-01-15 12.03.36.png" width="35%">
+
+For the Docker folder:
+<img src="screenshots/Schermafbeelding 2026-01-15 12.06.03.png" width="35%">
 ---
 
 ## Step 4: Install Git on your Synology
@@ -206,15 +214,18 @@ git clone https://github.com/MrCee/Synology-Homebrew.git ~/Synology-Homebrew
 ```
 
 When prompted, select **option 1 (Minimal installation)**. This can take some time.
+<img src="screenshots/Schermafbeelding 2026-01-15 12.08.11.png" width="35%">
 
 When asked `Prune these back to minimal now? [y/N]:` select **N** (no).
+<img src="screenshots/Schermafbeelding 2026-01-15 12.17.01.png" width="35%">
 
 After installation:
 ```bash
 brew install gum
 ```
+<img src="screenshots/Schermafbeelding 2026-01-15 12.17.54.png" width="35%">
 
-Then **close your terminal, reconnect via SSH**, and continue to the next step.
+Then **close your terminal, reconnect via SSH**, **Or type `exit` and press Enter** and continue to the next step.
 
 ---
 
