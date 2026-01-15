@@ -1199,7 +1199,8 @@ menu_load_balancer() {
         local hosts
         hosts=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null | tail -n +2)
         local host_count
-        host_count=$(echo "$hosts" | grep -c . 2>/dev/null || echo "0")
+        host_count=$(echo "$hosts" | grep -v '^$' | wc -l | tr -d ' ')
+        [[ ! "$host_count" =~ ^[0-9]+$ ]] && host_count=0
 
         if [[ "$host_count" -lt 2 ]]; then
             show_warning "Load balancing requires at least 2 nodes"
