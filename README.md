@@ -86,8 +86,9 @@ This project creates network pathways between your NAS and Mac(s). Understand th
 ```
 ---
 **Known Limitations:**
-- rffmpeg uses SQLite to track active transcoding jobs. Starting 4+ streams at the exact same moment can cause database lock     conflicts, resulting in nodes being marked as "bad" and streams falling back to localhost or will not start.
+- rffmpeg uses SQLite to track active transcoding jobs. Starting 4+ streams at the exact same moment can cause database lock conflicts, resulting in nodes being marked as "bad" and streams falling back to localhost or will not start.
 - Loading times can be long
+- **Multi-node weight configuration:** rffmpeg doesn't actively load balance based on current CPU usage. It distributes transcodes sequentially, roughly following the weight ratio. If both nodes have equal weight but different capabilities, the slower Mac may become overloaded while the faster one sits idle, resulting in stuttering video. **Recommendation:** Give your faster Mac a higher weight (e.g., M4 = weight 4, M1 = weight 2).
 
 ---
 ## Requirements
@@ -330,6 +331,8 @@ When asked for the weight choose what the second Mac should be able to handle.
 Check the monitor to see if the second Mac is registered.
 <img src="screenshots/Schermafbeelding 2026-01-15 13.16.05.png" width="35%">
 
+- **Multi-node weight configuration:** rffmpeg doesn't actively load balance based on current CPU usage. It distributes transcodes sequentially, roughly following the weight ratio. If both nodes have equal weight but different capabilities, the slower Mac may become overloaded while the faster one sits idle, resulting in stuttering video. **Recommendation:** Give your faster Mac a higher weight (e.g., M4 = weight 4, M1 = weight 2).
+
 ---
 
 ## Commands
@@ -379,7 +382,13 @@ Repairs SSH key authentication between Jellyfin and Mac nodes:
 **Use when:** rffmpeg shows connection errors, after recreating the Jellyfin container, or after restoring from backup.
 
 ### Change Node Weight
-Change the weight of a node to adjust its capacity in rffmpeg. Higher weight means the node can handle more concurrent transcodes.
+Change the weight of a node to adjust its capacity in rffmpeg. Higher weight means the node takes more concurrent transcodes.
+
+### Uninstall Transcodarr
+Here you can uninstall Transcodarr on your Synology, a node or both.
+
+### Monitor
+Here you can monitor the status of your nodes. note: not always 100% accurate.
 
 ---
 
@@ -390,8 +399,8 @@ Change the weight of a node to adjust its capacity in rffmpeg. Higher weight mea
 - DS916+
 
 **Mac (Apple Silicon):**
-- Mac mini M1
-- Mac mini M4
+- Mac Mini M1
+- Mac Mini M4
 - Mac Studio M4
 
 ---
