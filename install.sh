@@ -789,6 +789,27 @@ wizard_add_node() {
 
             echo ""
             sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null || true
+
+            # Verify NFS mounts from Jellyfin's perspective
+            echo ""
+            show_info "Verifying NFS mounts via rffmpeg SSH..."
+
+            local mount_test
+            mount_test=$(sudo docker exec -u abc "$JELLYFIN_CONTAINER" ssh -o BatchMode=yes -o ConnectTimeout=5 \
+                -o StrictHostKeyChecking=no -i /var/lib/jellyfin/.ssh/id_rsa "$mac_user@$mac_ip" \
+                "ls /data/media/ 2>/dev/null | head -5 && echo '---' && mount | grep -E '(/data/media|jellyfin-cache)'" 2>&1)
+
+            if echo "$mount_test" | grep -q "/data/media"; then
+                show_result true "NFS mounts verified and working!"
+                if echo "$mount_test" | grep -v "^---$" | head -5 | grep -q "[a-zA-Z]"; then
+                    show_info "Media files accessible from Mac"
+                fi
+            else
+                show_warning "NFS mounts may not be working correctly"
+                show_info "If transcoding fails, SSH to Mac and run:"
+                echo "  sudo /usr/local/bin/mount-nfs-media.sh"
+                echo "  sudo /usr/local/bin/mount-synology-cache.sh"
+            fi
         else
             echo "$add_output" | grep -v "DeprecationWarning" || true
             show_warning "Could not add Mac - try manually"
@@ -798,6 +819,7 @@ wizard_add_node() {
 
     echo ""
     show_result true "New Mac added successfully!"
+    show_info "Test transcoding by playing a video in Jellyfin"
     echo ""
     wait_for_user "Press Enter to return to menu"
 }
