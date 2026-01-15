@@ -109,7 +109,7 @@ refresh_rffmpeg_cache() {
 }
 
 # Get active process count for a node from cached rffmpeg status
-# Counts "PID XXXXX:" lines belonging to each host
+# Counts "PID XXXXX:" occurrences belonging to each host
 get_node_load() {
     local ip="$1"
     local mac_user="$2"  # unused but kept for compatibility
@@ -120,29 +120,22 @@ get_node_load() {
         refresh_rffmpeg_cache "$container"
     fi
 
-    # Parse rffmpeg status to count PIDs for this host
-    # Format: IP starts a new host block, subsequent lines with "PID XXXXX:" belong to it
-    local in_host=false
-    local pid_count=0
+    # Use awk to count PIDs for this host
+    # Logic: when we see an IP, check if it matches. If yes, count all "PID" until next IP
+    local count
+    count=$(echo "$RFFMPEG_STATUS_CACHE" | awk -v target="$ip" '
+        /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/ {
+            in_host = ($1 == target)
+        }
+        in_host && /PID [0-9]+:/ {
+            pid_count++
+        }
+        END {
+            print pid_count + 0
+        }
+    ')
 
-    while IFS= read -r line; do
-        # Check if line starts with an IP (new host block)
-        if [[ "$line" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-            if [[ "$line" =~ ^${ip}[[:space:]] ]]; then
-                in_host=true
-                # Check if first line has a PID
-                if [[ "$line" =~ PID\ [0-9]+: ]]; then
-                    ((pid_count++))
-                fi
-            else
-                in_host=false
-            fi
-        elif [[ "$in_host" == true ]] && [[ "$line" =~ PID\ [0-9]+: ]]; then
-            ((pid_count++))
-        fi
-    done <<< "$RFFMPEG_STATUS_CACHE"
-
-    echo "$pid_count"
+    echo "$count"
 }
 
 # Get state (active/idle) from cached rffmpeg status
