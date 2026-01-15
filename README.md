@@ -282,8 +282,8 @@ Then **close your terminal, reconnect via SSH**, **or type `exit` and press Ente
 SSH into your Synology and run:
 
 ```bash
-git clone https://github.com/JacquesToT/Transcodarr.git ~/Transcodarr
-cd ~/Transcodarr && ./install.sh
+git clone https://github.com/JacquesToT/transcodarr.git ~/transcodarr
+cd ~/transcodarr && ./install.sh
 ```
 Now follow the steps in the installer.
 <img src="screenshots/Schermafbeelding 2026-01-15 12.23.43.png" width="35%">
@@ -406,17 +406,6 @@ Here you can monitor the status of your nodes. note: not always 100% accurate.
 - Mac Studio M4
 
 ---
-
-## Documentation
-
-- [CHANGELOG](CHANGELOG.md) - Release history and version changes
-- [CONTRIBUTING](CONTRIBUTING.md) - How to contribute to Transcodarr
-- [SECURITY](SECURITY.md) - Security policy and best practices
-- [rFFmpeg Load Balancing](docs/RFFMPEG_LOAD_BALANCING.md) - Technical architecture details
-
-## License
-
-MIT
 
 ## Credits
 
