@@ -413,59 +413,45 @@ copy_rffmpeg_files() {
         echo -e "${MAGENTA}════════════════════════════════════════════════════════════${NC}"
     fi
     echo ""
-
-    echo "  The following commands will be executed:"
-    echo ""
-    echo -e "  ${CYAN}1.${NC} sudo mkdir -p ${jellyfin_config}/rffmpeg/.ssh"
-    echo -e "  ${CYAN}2.${NC} sudo cp -a ${OUTPUT_DIR}/rffmpeg/. ${jellyfin_config}/rffmpeg/"
-    echo -e "  ${CYAN}3.${NC} sudo chown -R ${abc_uid}:${abc_gid} ${jellyfin_config}/rffmpeg"
+    show_info "Copying rffmpeg files to Jellyfin..."
     echo ""
 
-    if ask_confirm "Execute these commands now?"; then
-        echo ""
-        show_warning ">>> Enter your SYNOLOGY password (not Mac!) <<<"
-        echo ""
-
-        # Step 1: Create directory
-        echo -n "  1. Creating directory... "
-        if sudo mkdir -p "${jellyfin_config}/rffmpeg/.ssh" 2>/dev/null; then
-            echo -e "${GREEN}✓${NC}"
-        else
-            echo -e "${RED}✗${NC}"
-            success=false
-        fi
-
-        # Step 2: Copy files
-        echo -n "  2. Copying files... "
-        if sudo cp -a "${OUTPUT_DIR}/rffmpeg/." "${jellyfin_config}/rffmpeg/" 2>/dev/null; then
-            echo -e "${GREEN}✓${NC}"
-        else
-            echo -e "${RED}✗${NC}"
-            success=false
-        fi
-
-        # Step 3: Set permissions (use dynamic abc uid/gid)
-        echo -n "  3. Setting permissions... "
-        if sudo chown -R "${abc_uid}:${abc_gid}" "${jellyfin_config}/rffmpeg" 2>/dev/null; then
-            echo -e "${GREEN}✓${NC}"
-        else
-            echo -e "${RED}✗${NC}"
-            success=false
-        fi
-
-        echo ""
-        if [[ "$success" == true ]]; then
-            show_result true "All files copied to Jellyfin config"
-            mark_step_complete "files_copied"
-            return 0
-        else
-            show_result false "Some commands failed"
-            show_manual_copy_instructions "$jellyfin_config"
-            return 1
-        fi
+    # Step 1: Create directory
+    echo -n "  1. Creating directory... "
+    if sudo mkdir -p "${jellyfin_config}/rffmpeg/.ssh" 2>/dev/null; then
+        echo -e "${GREEN}✓${NC}"
     else
-        show_manual_copy_instructions "$jellyfin_config"
+        echo -e "${RED}✗${NC}"
+        success=false
+    fi
+
+    # Step 2: Copy files
+    echo -n "  2. Copying files... "
+    if sudo cp -a "${OUTPUT_DIR}/rffmpeg/." "${jellyfin_config}/rffmpeg/" 2>/dev/null; then
+        echo -e "${GREEN}✓${NC}"
+    else
+        echo -e "${RED}✗${NC}"
+        success=false
+    fi
+
+    # Step 3: Set permissions (use dynamic abc uid/gid)
+    echo -n "  3. Setting permissions... "
+    if sudo chown -R "${abc_uid}:${abc_gid}" "${jellyfin_config}/rffmpeg" 2>/dev/null; then
+        echo -e "${GREEN}✓${NC}"
+    else
+        echo -e "${RED}✗${NC}"
+        success=false
+    fi
+
+    echo ""
+    if [[ "$success" == true ]]; then
+        show_result true "All files copied to Jellyfin config"
+        mark_step_complete "files_copied"
         return 0
+    else
+        show_result false "Some commands failed"
+        show_manual_copy_instructions "$jellyfin_config"
+        return 1
     fi
 }
 
