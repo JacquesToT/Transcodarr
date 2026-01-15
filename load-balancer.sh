@@ -100,28 +100,48 @@ get_mac_user() {
 # ============================================================================
 
 # Get active process count for a node from rffmpeg status
-# Returns: number of active rffmpeg processes (from Processes column)
+# Returns: number of active rffmpeg processes
 get_node_load() {
     local ip="$1"
     local mac_user="$2"  # unused but kept for compatibility
     local container="${3:-$JELLYFIN_CONTAINER}"
 
-    # Get process count from rffmpeg status Processes column
-    # The Processes column shows PIDs like [12345, 67890] or []
-    local processes
-    processes=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | \
-        grep -E "^${ip}[[:space:]]" | \
-        sed 's/.*\[\(.*\)\].*/\1/' | tr -d ' ')
+    # Get full rffmpeg status output
+    local status_output
+    status_output=$(sudo docker exec "$container" rffmpeg status 2>/dev/null)
 
-    # Count PIDs (empty = 0, otherwise count commas + 1)
-    if [[ -z "$processes" ]] || [[ "$processes" == "[]" ]]; then
+    if [[ -z "$status_output" ]]; then
         echo "0"
-    else
-        # Count number of PIDs by counting commas and adding 1
-        local count
-        count=$(echo "$processes" | tr -cd ',' | wc -c | tr -d ' ')
-        echo $((count + 1))
+        return
     fi
+
+    # rffmpeg status format:
+    # IP   Servername   ID   Weight   State   PID XXXXX: command...
+    #                                         PID XXXXX: command...
+    # Next IP starts a new host block
+
+    # Extract all lines belonging to this host (from IP line until next IP or end)
+    # Then count "PID " occurrences
+    local in_host=false
+    local pid_count=0
+
+    while IFS= read -r line; do
+        # Check if this line starts with an IP address (new host block)
+        if [[ "$line" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            if [[ "$line" =~ ^${ip}[[:space:]] ]]; then
+                in_host=true
+            else
+                in_host=false
+            fi
+        fi
+
+        # If we're in the right host block, count PIDs
+        if [[ "$in_host" == true ]] && [[ "$line" =~ PID\ [0-9]+: ]]; then
+            ((pid_count++))
+        fi
+    done <<< "$status_output"
+
+    echo "$pid_count"
 }
 
 # Calculate load score for a node
