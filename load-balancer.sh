@@ -99,49 +99,42 @@ get_mac_user() {
 # LOAD MONITORING FUNCTIONS
 # ============================================================================
 
-# Get active process count for a node from rffmpeg status
-# Returns: number of active rffmpeg processes
+# Get active process count for a node
+# Uses SSH pgrep for real-time accuracy (rffmpeg tracking can have stale PIDs)
 get_node_load() {
     local ip="$1"
-    local mac_user="$2"  # unused but kept for compatibility
+    local mac_user="$2"
     local container="${3:-$JELLYFIN_CONTAINER}"
 
-    # Get full rffmpeg status output
-    local status_output
-    status_output=$(sudo docker exec "$container" rffmpeg status 2>/dev/null)
+    # Use SSH to get actual ffmpeg process count on the Mac
+    # This is more accurate than rffmpeg's tracking which can have stale entries
+    local count
+    count=$(sudo docker exec "$container" ssh -o ConnectTimeout=2 -o BatchMode=yes \
+        -o StrictHostKeyChecking=no "${mac_user}@${ip}" \
+        "pgrep -c ffmpeg" 2>/dev/null || echo "0")
 
-    if [[ -z "$status_output" ]]; then
+    # Ensure we return a number
+    if [[ "$count" =~ ^[0-9]+$ ]]; then
+        echo "$count"
+    else
         echo "0"
-        return
     fi
+}
 
-    # rffmpeg status format:
-    # IP   Servername   ID   Weight   State   PID XXXXX: command...
-    #                                         PID XXXXX: command...
-    # Next IP starts a new host block
+# Get state (active/idle) from rffmpeg status
+get_node_state() {
+    local ip="$1"
+    local container="${2:-$JELLYFIN_CONTAINER}"
 
-    # Extract all lines belonging to this host (from IP line until next IP or end)
-    # Then count "PID " occurrences
-    local in_host=false
-    local pid_count=0
+    local state
+    state=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | \
+        grep -E "^${ip}[[:space:]]" | awk '{print $5}')
 
-    while IFS= read -r line; do
-        # Check if this line starts with an IP address (new host block)
-        if [[ "$line" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-            if [[ "$line" =~ ^${ip}[[:space:]] ]]; then
-                in_host=true
-            else
-                in_host=false
-            fi
-        fi
-
-        # If we're in the right host block, count PIDs
-        if [[ "$in_host" == true ]] && [[ "$line" =~ PID\ [0-9]+: ]]; then
-            ((pid_count++))
-        fi
-    done <<< "$status_output"
-
-    echo "$pid_count"
+    if [[ "$state" == "active" ]]; then
+        echo "active"
+    else
+        echo "idle"
+    fi
 }
 
 # Calculate load score for a node
@@ -317,10 +310,19 @@ show_hosts() {
         load=$(echo "$host_info" | awk '{print $3}')
         score=$(echo "$host_info" | awk '{print $4}')
 
+        # Get rffmpeg state as fallback (for burst transcoding where pgrep may miss)
+        local rffmpeg_state
+        rffmpeg_state=$(get_node_state "$ip" "$container")
+
         # Format load display
         local load_display
         if [[ "$load" -eq 0 ]]; then
-            load_display="${GREEN}idle${NC}"
+            # If pgrep shows 0 but rffmpeg says active, show "active" instead of "idle"
+            if [[ "$rffmpeg_state" == "active" ]]; then
+                load_display="${YELLOW}active${NC}"
+            else
+                load_display="${GREEN}idle${NC}"
+            fi
         elif [[ "$load" -eq 1 ]]; then
             load_display="${YELLOW}1 transcode${NC}"
         else
