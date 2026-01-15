@@ -151,9 +151,9 @@ get_hosts_with_load() {
         mac_user=$(whoami)
     fi
 
-    # Get hosts from rffmpeg
+    # Get hosts from rffmpeg (filter to only lines starting with IP addresses)
     local hosts
-    hosts=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | tail -n +2)
+    hosts=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | tail -n +2 | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
 
     if [[ -z "$hosts" ]]; then
         return 1
@@ -212,10 +212,10 @@ reorder_by_load() {
     fi
 
     # Check if reordering is needed
-    # Get current first host (lowest ID)
+    # Get current first host (lowest ID) - filter to only IP addresses
     local current_first
     current_first=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | \
-        tail -n +2 | sort -t' ' -k3 -n | head -1 | awk '{print $1}')
+        tail -n +2 | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -t' ' -k3 -n | head -1 | awk '{print $1}')
 
     # Get best host (lowest score)
     local best_host
@@ -273,10 +273,10 @@ show_hosts() {
         return 1
     fi
 
-    # Get current rffmpeg order (by ID)
+    # Get current rffmpeg order (by ID) - filter to only IP addresses
     local current_order
     current_order=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | \
-        tail -n +2 | sort -t' ' -k3 -n | awk '{print $1}')
+        tail -n +2 | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -t' ' -k3 -n | awk '{print $1}')
 
     # Display each host
     local rank=1
@@ -343,7 +343,7 @@ daemon_loop() {
             # Log if order changed
             local current_order
             current_order=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null | \
-                tail -n +2 | sort -t' ' -k3 -n | awk '{print $1}' | tr '\n' ' ')
+                tail -n +2 | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -t' ' -k3 -n | awk '{print $1}' | tr '\n' ' ')
 
             if [[ "$current_order" != "$last_order" ]] && [[ -n "$last_order" ]]; then
                 log_info "Host order changed: $current_order"
@@ -370,9 +370,9 @@ start_daemon() {
         fi
     fi
 
-    # Check host count
+    # Check host count (filter to only IP addresses)
     local host_count
-    host_count=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+    host_count=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null | tail -n +2 | grep -cE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || echo "0")
     if [[ "$host_count" -lt 2 ]]; then
         echo -e "${YELLOW}Warning: Only $host_count host(s) configured. Load balancing requires at least 2 hosts.${NC}"
         echo -e "${DIM}Add more nodes with: ./add-node.sh${NC}"
