@@ -1167,98 +1167,6 @@ menu_change_weight() {
 }
 
 # ============================================================================
-# LOAD BALANCER MENU
-# ============================================================================
-
-menu_load_balancer() {
-    while true; do
-        echo ""
-        show_info "Load Balancer (Load-Aware)"
-        echo ""
-
-        # Check daemon status
-        local daemon_running=false
-        local pid_file="/tmp/transcodarr-lb.pid"
-        if [[ -f "$pid_file" ]]; then
-            local pid
-            pid=$(cat "$pid_file")
-            if kill -0 "$pid" 2>/dev/null; then
-                daemon_running=true
-                echo -e "  Status: ${GREEN}Running${NC} (PID: $pid)"
-                echo -e "  ${DIM}Monitors load every 3s and auto-rebalances${NC}"
-            fi
-        fi
-
-        if [[ "$daemon_running" == "false" ]]; then
-            echo -e "  Status: ${DIM}Stopped${NC}"
-        fi
-
-        echo ""
-
-        # Show current host order (filter to only IP addresses)
-        local hosts
-        hosts=$(sudo docker exec "$JELLYFIN_CONTAINER" rffmpeg status 2>/dev/null | tail -n +2 | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
-        local host_count
-        host_count=$(echo "$hosts" | grep -cE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' 2>/dev/null || echo "0")
-        [[ ! "$host_count" =~ ^[0-9]+$ ]] && host_count=0
-
-        if [[ "$host_count" -lt 2 ]]; then
-            show_warning "Load balancing requires at least 2 nodes"
-            show_info "Add more nodes with 'Add a new Mac node'"
-            echo -e "${DIM}The load balancer starts automatically when you add a 2nd node.${NC}"
-            echo ""
-            wait_for_user "Press Enter to return to menu"
-            return
-        fi
-
-        # Show current status using load-balancer.sh
-        "$SCRIPT_DIR/load-balancer.sh" show 2>/dev/null || {
-            echo "  Registered hosts: $host_count"
-        }
-
-        echo -e "${DIM}Tip: View logs in the Monitor (📊)${NC}"
-        echo ""
-
-        local choice
-        if [[ "$daemon_running" == "true" ]]; then
-            choice=$(gum choose \
-                "⏹️  Stop Load Balancer" \
-                "⚖️  Rebalance Now" \
-                "⬅️  Back to Main Menu")
-        else
-            choice=$(gum choose \
-                "▶️  Start Load Balancer" \
-                "⚖️  Rebalance Now" \
-                "⬅️  Back to Main Menu")
-        fi
-
-        case "$choice" in
-            "▶️  Start Load Balancer")
-                echo ""
-                "$SCRIPT_DIR/load-balancer.sh" start
-                echo ""
-                wait_for_user "Press Enter to continue"
-                ;;
-            "⏹️  Stop Load Balancer")
-                echo ""
-                "$SCRIPT_DIR/load-balancer.sh" stop
-                echo ""
-                wait_for_user "Press Enter to continue"
-                ;;
-            "⚖️  Rebalance Now")
-                echo ""
-                "$SCRIPT_DIR/load-balancer.sh" balance
-                echo ""
-                wait_for_user "Press Enter to continue"
-                ;;
-            "⬅️  Back to Main Menu"|"")
-                return
-                ;;
-        esac
-    done
-}
-
-# ============================================================================
 # UNINSTALL MENU
 # ============================================================================
 
@@ -1939,7 +1847,6 @@ show_main_menu() {
     if [[ "$install_status" != "first_time" ]]; then
         menu_options+=("➕ Add a new Mac node")
         menu_options+=("⚖️  Change Node Weight")
-        menu_options+=("🔄 Load Balancer")
         menu_options+=("🗑️  Uninstall Transcodarr")
         menu_options+=("🔑 Fix SSH Keys")
     fi
@@ -2048,9 +1955,6 @@ main_menu_loop() {
                 ;;
             "⚖️  Change Node Weight")
                 menu_change_weight
-                ;;
-            "🔄 Load Balancer")
-                menu_load_balancer
                 ;;
             "🗑️  Uninstall Transcodarr")
                 menu_uninstall

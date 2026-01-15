@@ -86,6 +86,8 @@ This project creates network pathways between your NAS and Mac(s). Understand th
 ```
 ---
 **Known Limitations:**
+- rffmpeg uses SQLite to track active transcoding jobs. Starting 4+ streams at the exact same moment can cause database lock     conflicts, resulting in nodes being marked as "bad" and streams falling back to localhost or will not start.
+- Loading times can be long
 
 ---
 ## Requirements
@@ -337,20 +339,6 @@ Check the monitor to see if the second Mac is registered.
 docker exec jellyfin rffmpeg status
 ```
 
-### Add node manually
-```bash
-docker exec jellyfin rffmpeg add <MAC_IP> --weight 2
-```
-
-### Remove node
-```bash
-docker exec jellyfin rffmpeg remove <MAC_IP>
-```
-
-### Clear bad host status
-```bash
-docker exec jellyfin rffmpeg clear
-```
 
 ---
 
@@ -390,35 +378,8 @@ Repairs SSH key authentication between Jellyfin and Mac nodes:
 
 **Use when:** rffmpeg shows connection errors, after recreating the Jellyfin container, or after restoring from backup.
 
-### Configure Monitor
-
-Configures SSH settings for the Transcodarr Monitor (TUI dashboard):
-- **NAS IP** - Your Synology's IP address
-- **NAS User** - SSH username for the Synology
-
----
-
-## Performance
-
-| Input | Output | Speed |
-|-------|--------|-------|
-| 1080p BluRay (33 Mbps) | H.264 4 Mbps | ~7x realtime |
-| 720p video | H.264 2 Mbps | ~13x realtime |
-
----
-
-## Known Limitations
-
-**Starting multiple streams simultaneously**
-
-rffmpeg uses SQLite to track active transcoding jobs. Starting 4+ streams at the exact same moment can cause database lock conflicts, resulting in nodes being marked as "bad" and streams falling back to localhost.
-
-**Workaround:** Start streams with 2-3 seconds between them. Once running, multiple concurrent streams work fine - it's only the simultaneous *start* that can cause issues.
-
-**If you hit a database lock:**
-```bash
-sudo docker restart jellyfin
-```
+### Change Node Weight
+Change the weight of a node to adjust its capacity in rffmpeg. Higher weight means the node can handle more concurrent transcodes.
 
 ---
 
