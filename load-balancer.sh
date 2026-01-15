@@ -99,23 +99,28 @@ get_mac_user() {
 # LOAD MONITORING FUNCTIONS
 # ============================================================================
 
-# Get ffmpeg process count on a remote Mac via SSH through container
-# Returns: number of active ffmpeg processes
+# Get active process count for a node from rffmpeg status
+# Returns: number of active rffmpeg processes (from Processes column)
 get_node_load() {
     local ip="$1"
-    local mac_user="$2"
+    local mac_user="$2"  # unused but kept for compatibility
     local container="${3:-$JELLYFIN_CONTAINER}"
 
-    # SSH from container to Mac and count ffmpeg processes
-    local count
-    count=$(sudo docker exec "$container" ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no \
-        "${mac_user}@${ip}" "pgrep -c ffmpeg" 2>/dev/null || echo "0")
+    # Get process count from rffmpeg status Processes column
+    # The Processes column shows PIDs like [12345, 67890] or []
+    local processes
+    processes=$(sudo docker exec "$container" rffmpeg status 2>/dev/null | \
+        grep -E "^${ip}[[:space:]]" | \
+        sed 's/.*\[\(.*\)\].*/\1/' | tr -d ' ')
 
-    # Ensure we return a number
-    if [[ "$count" =~ ^[0-9]+$ ]]; then
-        echo "$count"
-    else
+    # Count PIDs (empty = 0, otherwise count commas + 1)
+    if [[ -z "$processes" ]] || [[ "$processes" == "[]" ]]; then
         echo "0"
+    else
+        # Count number of PIDs by counting commas and adding 1
+        local count
+        count=$(echo "$processes" | tr -cd ',' | wc -c | tr -d ' ')
+        echo $((count + 1))
     fi
 }
 
