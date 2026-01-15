@@ -456,13 +456,14 @@ start_daemon() {
         source '$SCRIPT_DIR/lib/state.sh' 2>/dev/null || true
 
         $(declare -f log log_info log_debug log_error)
-        $(declare -f get_mac_user get_node_load calculate_load_score)
-        $(declare -f get_hosts_with_load reorder_by_load daemon_loop)
+        $(declare -f get_mac_user get_node_load get_node_state calculate_load_score)
+        $(declare -f refresh_rffmpeg_cache get_hosts_with_load reorder_by_load daemon_loop)
 
         JELLYFIN_CONTAINER='$JELLYFIN_CONTAINER'
         CHECK_INTERVAL='$CHECK_INTERVAL'
         LOG_FILE='$LOG_FILE'
         HOME='$HOME'
+        RFFMPEG_STATUS_CACHE=''
 
         daemon_loop
     " >> "$LOG_FILE" 2>&1 &
