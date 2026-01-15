@@ -6,7 +6,36 @@ Offload live video transcoding from your NAS to Apple Silicon Macs with hardware
 
 > ⚠️ **Backup First!** Before proceeding, backup your Jellyfin configuration folder and docker-compose file.
 
+Tested on a DS1821+ Synology, DSM 7.3.2-86009
+Mac mini M1, Mac mini M4, Mac Studio M4.
+Test video:
+  -  Native 4K UHD (not upscaled)
+  -  HDR10 with wide color gamut
+  -  10-bit color depth
+  -  Dolby Atmos immersive audio
+  -  Lossless video and audio (REMUX)
+  -  Multiple audio tracks + subtitles
+  
+<table>
+<tr>
+<td align="center">
+<img src="screenshots/Schermafbeelding 2026-01-15 13.21.11.png" width="100%"><br>
+<small><i>Original (auto quality)</i></small>
+</td>
+<td align="center">
+<img src="screenshots/Schermafbeelding 2026-01-15 13.31.16.png" width="100%"><br>
+<small><i>Before Transcodarr - Synology couldn't handle HEVC transcoding</i></small>
+</td>
+<td align="center">
+<img src="screenshots/Schermafbeelding 2026-01-15 13.23.54.png" width="100%"><br>
+<small><i>With Transcodarr</i></small>
+</td>
+</tr>
+</table>  
+Tested on de mac mini M1 - 8 cores - 16gb ram 
+
 ---
+
 
 ## Security Considerations
 
@@ -127,7 +156,7 @@ services:
 Start the container and wait for FFmpeg to install.
 (can take a while, for me it took about 8 minutes)
 
-Now check if jellyfin will start
+Now check if Jellyfin will start
 ### Fix Permissions (if Jellyfin won't start)
 
 If Jellyfin fails to start, fix the folder permissions:
@@ -225,7 +254,7 @@ brew install gum
 ```
 <img src="screenshots/Schermafbeelding 2026-01-15 12.17.54.png" width="35%">
 
-Then **close your terminal, reconnect via SSH**, **Or type `exit` and press Enter** and continue to the next step.
+Then **close your terminal, reconnect via SSH**, **or type `exit` and press Enter** and continue to the next step.
 
 ---
 
@@ -237,6 +266,8 @@ SSH into your Synology and run:
 git clone https://github.com/JacquesToT/Transcodarr.git ~/Transcodarr
 cd ~/Transcodarr && ./install.sh
 ```
+Now follow the steps in the installer.
+<img src="screenshots/Schermafbeelding 2026-01-15 12.23.43.png" width="35%">
 
 The installer will:
 1. Connect to your Mac via SSH
@@ -248,7 +279,15 @@ The installer will:
 **That's it!** Start a video in Jellyfin and watch it transcode on your Mac.
 
 ---
+## Monitoring
 
+Use ./install.sh or ./monitor.sh to monitor the status of your nodes
+It will install TUI framework and terminal formatting
+It will ask for your Synology password.
+<img src="screenshots/Schermafbeelding 2026-01-15 13.06.42.png" width="35%">
+<img src="screenshots/Schermafbeelding 2026-01-15 13.09.15.png" width="35%">
+
+---
 ## Adding Another Mac
 
 To add more Macs to your transcoding cluster:
@@ -261,6 +300,9 @@ To add more Macs to your transcoding cluster:
 3. Select **"➕ Add a new Mac node"**
 
 The installer will configure everything automatically.
+When asked for the weight choose what the second Mac should be able to handle.
+Check the monitor to see if the second Mac is registered.
+<img src="screenshots/Schermafbeelding 2026-01-15 13.16.05.png" width="35%">
 
 ---
 
