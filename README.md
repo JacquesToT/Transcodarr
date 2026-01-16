@@ -1,5 +1,7 @@
 # Transcodarr
 
+![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
+
 **Distributed Live Transcoding for Jellyfin using Apple Silicon Macs**
 
 Offload live video transcoding from your NAS to Apple Silicon Macs with hardware-accelerated VideoToolbox encoding.
